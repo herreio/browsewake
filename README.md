@@ -16,7 +16,7 @@ Browser extensions can export active tabs but not their back/forward history. Br
 | Brave   | Yes | Yes | SNSS session files |
 | Safari  | Yes | No  | JXA (AppleScript) / SQLite fallback |
 
-Safari does not store per-tab navigation history in any accessible format.
+Safari maintains back/forward history internally, but it is not available through stable scripting or documented on-disk formats.
 
 ## Installation
 
