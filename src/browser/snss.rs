@@ -11,6 +11,10 @@ const CMD_TABS_UPDATE_TAB_NAVIGATION: u8 = 1;
 const CMD_SESSION_SET_TAB_WINDOW: u8 = 0;
 const CMD_SESSION_UPDATE_TAB_NAVIGATION: u8 = 6;
 
+type TabNav = (usize, String, String);
+type TabNavs = HashMap<i32, Vec<TabNav>>;
+type WindowTabNavs = HashMap<i32, TabNavs>;
+
 struct SnssTab {
     id: i32,
     index: i32,
@@ -65,7 +69,7 @@ fn read_session(sessions_dir: &Path) -> Result<Vec<Window>> {
 
     if let Some(tabs_file) = find_latest_file(sessions_dir, "Tabs_*") {
         let data = fs::read(&tabs_file)?;
-        let mut tab_navs: HashMap<i32, Vec<(usize, String, String)>> = HashMap::new();
+        let mut tab_navs: TabNavs = HashMap::new();
         collect_tab_navs(&data, CMD_TABS_UPDATE_TAB_NAVIGATION, &mut tab_navs)?;
         if !tab_navs.is_empty() {
             let tabs = build_tabs(tab_navs)?;
@@ -82,7 +86,7 @@ fn parse_session_file(data: &[u8]) -> Result<Vec<Window>> {
         return Err(BrowseWakeError::Snss("invalid SNSS header".into()));
     }
 
-    let mut tab_navs: HashMap<i32, Vec<(usize, String, String)>> = HashMap::new();
+    let mut tab_navs: TabNavs = HashMap::new();
     let mut tab_to_window: HashMap<i32, i32> = HashMap::new();
     let mut offset = 8;
 
@@ -106,10 +110,11 @@ fn parse_session_file(data: &[u8]) -> Result<Vec<Window>> {
             }
             CMD_SESSION_UPDATE_TAB_NAVIGATION => {
                 if let Some(tab) = parse_tab_command(cmd) {
-                    tab_navs
-                        .entry(tab.id)
-                        .or_default()
-                        .push((tab.index as usize, tab.url, tab.title));
+                    tab_navs.entry(tab.id).or_default().push((
+                        tab.index as usize,
+                        tab.url,
+                        tab.title,
+                    ));
                 }
             }
             _ => {}
@@ -119,9 +124,8 @@ fn parse_session_file(data: &[u8]) -> Result<Vec<Window>> {
     }
 
     // Group tabs by window
-    let mut window_tab_navs: HashMap<i32, HashMap<i32, Vec<(usize, String, String)>>> =
-        HashMap::new();
-    let mut unassigned: HashMap<i32, Vec<(usize, String, String)>> = HashMap::new();
+    let mut window_tab_navs: WindowTabNavs = HashMap::new();
+    let mut unassigned: TabNavs = HashMap::new();
 
     for (tab_id, navs) in tab_navs {
         if let Some(&window_id) = tab_to_window.get(&tab_id) {
@@ -175,11 +179,7 @@ fn find_latest_file(sessions_dir: &Path, prefix: &str) -> Option<PathBuf> {
 }
 
 /// Extract tab navigation entries from an SNSS file into the shared map.
-fn collect_tab_navs(
-    data: &[u8],
-    nav_cmd_id: u8,
-    tab_navs: &mut HashMap<i32, Vec<(usize, String, String)>>,
-) -> Result<()> {
+fn collect_tab_navs(data: &[u8], nav_cmd_id: u8, tab_navs: &mut TabNavs) -> Result<()> {
     if data.len() < 8 || &data[..4] != SNSS_MAGIC {
         return Err(BrowseWakeError::Snss("invalid SNSS header".into()));
     }
@@ -195,13 +195,13 @@ fn collect_tab_navs(
         }
 
         let cmd_id = data[offset];
-        if cmd_id == nav_cmd_id {
-            if let Some(tab) = parse_tab_command(&data[offset..offset + cmd_len]) {
-                tab_navs
-                    .entry(tab.id)
-                    .or_default()
-                    .push((tab.index as usize, tab.url, tab.title));
-            }
+        if cmd_id == nav_cmd_id
+            && let Some(tab) = parse_tab_command(&data[offset..offset + cmd_len])
+        {
+            tab_navs
+                .entry(tab.id)
+                .or_default()
+                .push((tab.index as usize, tab.url, tab.title));
         }
 
         offset += cmd_len;
@@ -248,7 +248,7 @@ fn parse_tab_command(cmd: &[u8]) -> Option<SnssTab> {
     })
 }
 
-fn build_tabs(tab_navs: HashMap<i32, Vec<(usize, String, String)>>) -> Result<Vec<Tab>> {
+fn build_tabs(tab_navs: TabNavs) -> Result<Vec<Tab>> {
     let mut tabs = Vec::new();
 
     for (_tab_id, mut navs) in tab_navs {

@@ -42,13 +42,12 @@ fn read_safari_tabs() -> Result<Vec<Window>> {
 
     // Try CloudTabs.db first (has more reliable data)
     let cloud_tabs_db = safari_dir.join("CloudTabs.db");
-    if cloud_tabs_db.exists() {
-        if let Ok(tabs) = read_cloud_tabs_db(&cloud_tabs_db) {
-            if !tabs.is_empty() {
-                // CloudTabs doesn't have window info, put all in one window
-                return Ok(vec![Window { tabs }]);
-            }
-        }
+    if cloud_tabs_db.exists()
+        && let Ok(tabs) = read_cloud_tabs_db(&cloud_tabs_db)
+        && !tabs.is_empty()
+    {
+        // CloudTabs doesn't have window info, put all in one window
+        return Ok(vec![Window { tabs }]);
     }
 
     // Try BrowserState.db
@@ -58,14 +57,15 @@ fn read_safari_tabs() -> Result<Vec<Window>> {
         return Ok(vec![Window { tabs }]);
     }
 
-    Err(BrowseWakeError::NoProfile("safari (no database found)".into()))
+    Err(BrowseWakeError::NoProfile(
+        "safari (no database found)".into(),
+    ))
 }
 
 fn read_cloud_tabs_db(path: &std::path::Path) -> Result<Vec<Tab>> {
     let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
-    let mut stmt = conn.prepare(
-        "SELECT url, title FROM cloud_tabs ORDER BY device_name, position",
-    )?;
+    let mut stmt =
+        conn.prepare("SELECT url, title FROM cloud_tabs ORDER BY device_name, position")?;
 
     let tabs = stmt
         .query_map([], |row| {
@@ -114,7 +114,9 @@ fn read_browser_state_db(path: &std::path::Path) -> Result<Vec<Tab>> {
         }
     }
 
-    Err(BrowseWakeError::Other("could not read Safari BrowserState.db".into()))
+    Err(BrowseWakeError::Other(
+        "could not read Safari BrowserState.db".into(),
+    ))
 }
 
 fn read_safari_jxa() -> Result<Vec<Window>> {

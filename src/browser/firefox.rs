@@ -88,7 +88,9 @@ fn parse_session(session: &serde_json::Value) -> Result<Vec<Window>> {
                 None => continue,
             };
 
-            let current_index = tab_value["index"].as_u64().map(|i| (i as usize).saturating_sub(1));
+            let current_index = tab_value["index"]
+                .as_u64()
+                .map(|i| (i as usize).saturating_sub(1));
 
             let history: Vec<NavEntry> = entries
                 .iter()

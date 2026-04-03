@@ -6,7 +6,10 @@ use browsewake::model::BrowserKind;
 use browsewake::output::{self, Format};
 
 #[derive(Parser)]
-#[command(name = "browsewake", about = "Export browser tabs and per-tab navigation history")]
+#[command(
+    name = "browsewake",
+    about = "Export browser tabs and per-tab navigation history"
+)]
 struct Cli {
     /// Browsers to export (firefox, chrome, safari). Default: all installed.
     #[arg(value_parser = parse_browser)]

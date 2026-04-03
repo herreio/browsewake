@@ -37,7 +37,12 @@ fn write_text(w: &mut dyn Write, export: &Export) -> Result<()> {
         )?;
         for (wi, window) in bw.windows.iter().enumerate() {
             if bw.windows.len() > 1 {
-                writeln!(w, "  --- Window {} ({} tabs) ---", wi + 1, window.tabs.len())?;
+                writeln!(
+                    w,
+                    "  --- Window {} ({} tabs) ---",
+                    wi + 1,
+                    window.tabs.len()
+                )?;
             }
             for (i, tab) in window.tabs.iter().enumerate() {
                 writeln!(w, "  Tab {}: {}", i + 1, tab.title)?;
@@ -61,7 +66,10 @@ fn write_text(w: &mut dyn Write, export: &Export) -> Result<()> {
 }
 
 fn write_csv(w: &mut dyn Write, export: &Export) -> Result<()> {
-    writeln!(w, "browser,window,tab_index,url,title,history_index,history_url,history_title")?;
+    writeln!(
+        w,
+        "browser,window,tab_index,url,title,history_index,history_url,history_title"
+    )?;
     for bw in &export.browsers {
         for (wi, window) in bw.windows.iter().enumerate() {
             for (i, tab) in window.tabs.iter().enumerate() {

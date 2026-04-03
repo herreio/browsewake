@@ -34,7 +34,9 @@ pub fn chrome_user_data_dir() -> Result<PathBuf> {
             .join("google-chrome")
     } else if cfg!(target_os = "windows") {
         dirs::data_local_dir()
-            .ok_or_else(|| BrowseWakeError::Other("cannot determine local appdata directory".into()))?
+            .ok_or_else(|| {
+                BrowseWakeError::Other("cannot determine local appdata directory".into())
+            })?
             .join(r"Google\Chrome\User Data")
     } else {
         return Err(BrowseWakeError::Unsupported("chrome".into()));
@@ -87,7 +89,9 @@ pub fn brave_user_data_dir() -> Result<PathBuf> {
             .join("BraveSoftware/Brave-Browser")
     } else if cfg!(target_os = "windows") {
         dirs::data_local_dir()
-            .ok_or_else(|| BrowseWakeError::Other("cannot determine local appdata directory".into()))?
+            .ok_or_else(|| {
+                BrowseWakeError::Other("cannot determine local appdata directory".into())
+            })?
             .join(r"BraveSoftware\Brave-Browser\User Data")
     } else {
         return Err(BrowseWakeError::Unsupported("brave".into()));
