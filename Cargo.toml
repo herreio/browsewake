@@ -1,6 +1,6 @@
 [package]
 name = "browsewake"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Export browser tabs and per-tab navigation history from Firefox, Chrome, Brave, and Safari"
 repository = "https://github.com/herreio/browsewake"
