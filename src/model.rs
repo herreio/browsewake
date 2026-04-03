@@ -6,6 +6,7 @@ use std::fmt;
 pub enum BrowserKind {
     Firefox,
     Chrome,
+    Brave,
     Safari,
 }
 
@@ -14,6 +15,7 @@ impl fmt::Display for BrowserKind {
         match self {
             BrowserKind::Firefox => write!(f, "firefox"),
             BrowserKind::Chrome => write!(f, "chrome"),
+            BrowserKind::Brave => write!(f, "brave"),
             BrowserKind::Safari => write!(f, "safari"),
         }
     }
@@ -26,6 +28,7 @@ impl std::str::FromStr for BrowserKind {
         match s.to_lowercase().as_str() {
             "firefox" => Ok(BrowserKind::Firefox),
             "chrome" => Ok(BrowserKind::Chrome),
+            "brave" => Ok(BrowserKind::Brave),
             "safari" => Ok(BrowserKind::Safari),
             other => Err(format!("unknown browser: {other}")),
         }

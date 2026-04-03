@@ -1,6 +1,6 @@
 # Browsewake
 
-A CLI tool that exports browser tabs and per-tab navigation history from Firefox, Chrome, and Safari.
+A CLI tool that exports browser tabs and per-tab navigation history from Firefox, Chrome, Brave, and Safari.
 
 Browser extensions can export active tabs but not their back/forward history. Browsewake reads browser session files directly, providing two dimensions:
 
@@ -13,6 +13,7 @@ Browser extensions can export active tabs but not their back/forward history. Br
 |---------|:---:|:---:|---|
 | Firefox | Yes | Yes | `recovery.jsonlz4` (mozlz4-compressed JSON) |
 | Chrome  | Yes | Yes | SNSS session files |
+| Brave   | Yes | Yes | SNSS session files |
 | Safari  | Yes | No  | JXA (AppleScript) / SQLite fallback |
 
 Safari does not store per-tab navigation history in any accessible format.
@@ -86,6 +87,7 @@ Browsewake is cross-platform. The session file formats are identical across OSes
 |---------|---|---|---|
 | Firefox | `~/Library/Application Support/Firefox/Profiles/*/` | `~/.mozilla/firefox/*/` | `%APPDATA%\Mozilla\Firefox\Profiles\*\` |
 | Chrome  | `~/Library/Application Support/Google/Chrome/` | `~/.config/google-chrome/` | `%LOCALAPPDATA%\Google\Chrome\User Data\` |
+| Brave   | `~/Library/Application Support/BraveSoftware/Brave-Browser/` | `~/.config/BraveSoftware/Brave-Browser/` | `%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data\` |
 | Safari  | `~/Library/Safari/` | N/A | N/A |
 
 ## License

@@ -1,25 +1,25 @@
 use crate::browser::BrowserSource;
-use crate::browser::paths::chrome_profile_dirs;
+use crate::browser::paths::brave_profile_dirs;
 use crate::browser::snss;
 use crate::error::Result;
 use crate::model::{BrowserKind, BrowserTabs};
 
-pub struct Chrome;
+pub struct Brave;
 
-impl BrowserSource for Chrome {
+impl BrowserSource for Brave {
     fn kind(&self) -> BrowserKind {
-        BrowserKind::Chrome
+        BrowserKind::Brave
     }
 
     fn available(&self) -> bool {
-        chrome_profile_dirs().is_ok()
+        brave_profile_dirs().is_ok()
     }
 
     fn export_tabs(&self) -> Result<BrowserTabs> {
-        let profiles = chrome_profile_dirs()?;
-        let tabs = snss::read_chromium_sessions(&profiles, "Chrome")?;
+        let profiles = brave_profile_dirs()?;
+        let tabs = snss::read_chromium_sessions(&profiles, "Brave")?;
         Ok(BrowserTabs {
-            browser: BrowserKind::Chrome,
+            browser: BrowserKind::Brave,
             tabs,
         })
     }

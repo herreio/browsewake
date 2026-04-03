@@ -75,6 +75,57 @@ pub fn chrome_profile_dirs() -> Result<Vec<PathBuf>> {
     }
 }
 
+/// Returns the Brave user data directory for the current OS.
+pub fn brave_user_data_dir() -> Result<PathBuf> {
+    let path = if cfg!(target_os = "macos") {
+        dirs::home_dir()
+            .ok_or_else(|| BrowseWakeError::Other("cannot determine home directory".into()))?
+            .join("Library/Application Support/BraveSoftware/Brave-Browser")
+    } else if cfg!(target_os = "linux") {
+        dirs::config_dir()
+            .ok_or_else(|| BrowseWakeError::Other("cannot determine config directory".into()))?
+            .join("BraveSoftware/Brave-Browser")
+    } else if cfg!(target_os = "windows") {
+        dirs::data_local_dir()
+            .ok_or_else(|| BrowseWakeError::Other("cannot determine local appdata directory".into()))?
+            .join(r"BraveSoftware\Brave-Browser\User Data")
+    } else {
+        return Err(BrowseWakeError::Unsupported("brave".into()));
+    };
+
+    if path.is_dir() {
+        Ok(path)
+    } else {
+        Err(BrowseWakeError::NoProfile("brave".into()))
+    }
+}
+
+/// Returns Brave profile directories (Default, Profile 1, Profile 2, etc.)
+pub fn brave_profile_dirs() -> Result<Vec<PathBuf>> {
+    let user_data = brave_user_data_dir()?;
+    let mut profiles = Vec::new();
+
+    let default_profile = user_data.join("Default");
+    if default_profile.is_dir() {
+        profiles.push(default_profile);
+    }
+
+    let pattern = user_data.join("Profile *").to_string_lossy().to_string();
+    if let Ok(entries) = glob::glob(&pattern) {
+        for entry in entries.flatten() {
+            if entry.is_dir() {
+                profiles.push(entry);
+            }
+        }
+    }
+
+    if profiles.is_empty() {
+        Err(BrowseWakeError::NoProfile("brave".into()))
+    } else {
+        Ok(profiles)
+    }
+}
+
 /// Returns the Safari data directory (macOS only).
 #[cfg(target_os = "macos")]
 pub fn safari_data_dir() -> Result<PathBuf> {
