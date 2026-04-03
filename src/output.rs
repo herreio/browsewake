@@ -26,20 +26,32 @@ pub fn write_export(w: &mut dyn Write, export: &Export, format: &Format) -> Resu
 }
 
 fn write_text(w: &mut dyn Write, export: &Export) -> Result<()> {
-    for bt in &export.browsers {
-        writeln!(w, "=== {} ({} tabs) ===", bt.browser, bt.tabs.len())?;
-        for (i, tab) in bt.tabs.iter().enumerate() {
-            writeln!(w, "  Tab {}: {}", i + 1, tab.title)?;
-            writeln!(w, "    URL: {}", tab.url)?;
-            if !tab.history.is_empty() {
-                writeln!(w, "    History ({} entries):", tab.history.len())?;
-                for entry in &tab.history {
-                    let marker = if tab.current_index == Some(entry.index) {
-                        " <-- current"
-                    } else {
-                        ""
-                    };
-                    writeln!(w, "      [{}] {}{}", entry.index, entry.url, marker)?;
+    for bw in &export.browsers {
+        writeln!(
+            w,
+            "=== {} ({} tabs in {} window{}) ===",
+            bw.browser,
+            bw.tab_count(),
+            bw.windows.len(),
+            if bw.windows.len() == 1 { "" } else { "s" },
+        )?;
+        for (wi, window) in bw.windows.iter().enumerate() {
+            if bw.windows.len() > 1 {
+                writeln!(w, "  --- Window {} ({} tabs) ---", wi + 1, window.tabs.len())?;
+            }
+            for (i, tab) in window.tabs.iter().enumerate() {
+                writeln!(w, "  Tab {}: {}", i + 1, tab.title)?;
+                writeln!(w, "    URL: {}", tab.url)?;
+                if !tab.history.is_empty() {
+                    writeln!(w, "    History ({} entries):", tab.history.len())?;
+                    for entry in &tab.history {
+                        let marker = if tab.current_index == Some(entry.index) {
+                            " <-- current"
+                        } else {
+                            ""
+                        };
+                        writeln!(w, "      [{}] {}{}", entry.index, entry.url, marker)?;
+                    }
                 }
             }
         }
@@ -49,31 +61,35 @@ fn write_text(w: &mut dyn Write, export: &Export) -> Result<()> {
 }
 
 fn write_csv(w: &mut dyn Write, export: &Export) -> Result<()> {
-    writeln!(w, "browser,tab_index,url,title,history_index,history_url,history_title")?;
-    for bt in &export.browsers {
-        for (i, tab) in bt.tabs.iter().enumerate() {
-            if tab.history.is_empty() {
-                writeln!(
-                    w,
-                    "{},{},{},{},,,",
-                    bt.browser,
-                    i,
-                    csv_escape(&tab.url),
-                    csv_escape(&tab.title),
-                )?;
-            } else {
-                for entry in &tab.history {
+    writeln!(w, "browser,window,tab_index,url,title,history_index,history_url,history_title")?;
+    for bw in &export.browsers {
+        for (wi, window) in bw.windows.iter().enumerate() {
+            for (i, tab) in window.tabs.iter().enumerate() {
+                if tab.history.is_empty() {
                     writeln!(
                         w,
-                        "{},{},{},{},{},{},{}",
-                        bt.browser,
+                        "{},{},{},{},{},,,",
+                        bw.browser,
+                        wi + 1,
                         i,
                         csv_escape(&tab.url),
                         csv_escape(&tab.title),
-                        entry.index,
-                        csv_escape(&entry.url),
-                        csv_escape(&entry.title),
                     )?;
+                } else {
+                    for entry in &tab.history {
+                        writeln!(
+                            w,
+                            "{},{},{},{},{},{},{},{}",
+                            bw.browser,
+                            wi + 1,
+                            i,
+                            csv_escape(&tab.url),
+                            csv_escape(&tab.title),
+                            entry.index,
+                            csv_escape(&entry.url),
+                            csv_escape(&entry.title),
+                        )?;
+                    }
                 }
             }
         }

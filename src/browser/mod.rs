@@ -7,12 +7,12 @@ pub mod safari;
 pub mod snss;
 
 use crate::error::Result;
-use crate::model::{BrowserKind, BrowserTabs};
+use crate::model::{BrowserKind, BrowserWindows};
 
 pub trait BrowserSource {
     fn kind(&self) -> BrowserKind;
     fn available(&self) -> bool;
-    fn export_tabs(&self) -> Result<BrowserTabs>;
+    fn export_tabs(&self) -> Result<BrowserWindows>;
 }
 
 /// Returns browser sources for the requested browsers, or all available if none specified.

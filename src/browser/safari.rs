@@ -3,7 +3,7 @@
 use crate::browser::BrowserSource;
 use crate::browser::paths::safari_data_dir;
 use crate::error::{BrowseWakeError, Result};
-use crate::model::{BrowserKind, BrowserTabs, Tab};
+use crate::model::{BrowserKind, BrowserWindows, Tab, Window};
 use rusqlite::Connection;
 use std::process::Command;
 
@@ -18,26 +18,26 @@ impl BrowserSource for Safari {
         safari_data_dir().is_ok()
     }
 
-    fn export_tabs(&self) -> Result<BrowserTabs> {
+    fn export_tabs(&self) -> Result<BrowserWindows> {
         match read_safari_tabs() {
-            Ok(tabs) => Ok(BrowserTabs {
+            Ok(windows) => Ok(BrowserWindows {
                 browser: BrowserKind::Safari,
-                tabs,
+                windows,
             }),
             Err(_) => {
                 // Fallback to JXA if SQLite fails (e.g., TCC restrictions)
                 eprintln!("warning: SQLite access failed, trying JXA fallback");
-                let tabs = read_safari_jxa()?;
-                Ok(BrowserTabs {
+                let windows = read_safari_jxa()?;
+                Ok(BrowserWindows {
                     browser: BrowserKind::Safari,
-                    tabs,
+                    windows,
                 })
             }
         }
     }
 }
 
-fn read_safari_tabs() -> Result<Vec<Tab>> {
+fn read_safari_tabs() -> Result<Vec<Window>> {
     let safari_dir = safari_data_dir()?;
 
     // Try CloudTabs.db first (has more reliable data)
@@ -45,7 +45,8 @@ fn read_safari_tabs() -> Result<Vec<Tab>> {
     if cloud_tabs_db.exists() {
         if let Ok(tabs) = read_cloud_tabs_db(&cloud_tabs_db) {
             if !tabs.is_empty() {
-                return Ok(tabs);
+                // CloudTabs doesn't have window info, put all in one window
+                return Ok(vec![Window { tabs }]);
             }
         }
     }
@@ -53,7 +54,8 @@ fn read_safari_tabs() -> Result<Vec<Tab>> {
     // Try BrowserState.db
     let state_db = safari_dir.join("BrowserState.db");
     if state_db.exists() {
-        return read_browser_state_db(&state_db);
+        let tabs = read_browser_state_db(&state_db)?;
+        return Ok(vec![Window { tabs }]);
     }
 
     Err(BrowseWakeError::NoProfile("safari (no database found)".into()))
@@ -115,16 +117,18 @@ fn read_browser_state_db(path: &std::path::Path) -> Result<Vec<Tab>> {
     Err(BrowseWakeError::Other("could not read Safari BrowserState.db".into()))
 }
 
-fn read_safari_jxa() -> Result<Vec<Tab>> {
+fn read_safari_jxa() -> Result<Vec<Window>> {
     let script = r#"
         var safari = Application("Safari");
-        var tabs = [];
+        var windows = [];
         safari.windows().forEach(function(win) {
+            var tabs = [];
             win.tabs().forEach(function(tab) {
                 tabs.push({ url: tab.url(), title: tab.name() });
             });
+            windows.push(tabs);
         });
-        JSON.stringify(tabs);
+        JSON.stringify(windows);
     "#;
 
     let output = Command::new("osascript")
@@ -138,17 +142,24 @@ fn read_safari_jxa() -> Result<Vec<Tab>> {
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let jxa_tabs: Vec<serde_json::Value> = serde_json::from_str(stdout.trim())?;
+    let jxa_windows: Vec<Vec<serde_json::Value>> = serde_json::from_str(stdout.trim())?;
 
-    let tabs = jxa_tabs
+    let windows = jxa_windows
         .into_iter()
-        .map(|v| Tab {
-            url: v["url"].as_str().unwrap_or("").to_string(),
-            title: v["title"].as_str().unwrap_or("").to_string(),
-            history: Vec::new(),
-            current_index: None,
+        .map(|jxa_tabs| {
+            let tabs = jxa_tabs
+                .into_iter()
+                .map(|v| Tab {
+                    url: v["url"].as_str().unwrap_or("").to_string(),
+                    title: v["title"].as_str().unwrap_or("").to_string(),
+                    history: Vec::new(),
+                    current_index: None,
+                })
+                .collect();
+            Window { tabs }
         })
+        .filter(|w: &Window| !w.tabs.is_empty())
         .collect();
 
-    Ok(tabs)
+    Ok(windows)
 }

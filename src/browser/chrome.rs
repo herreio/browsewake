@@ -2,7 +2,7 @@ use crate::browser::BrowserSource;
 use crate::browser::paths::chrome_profile_dirs;
 use crate::browser::snss;
 use crate::error::Result;
-use crate::model::{BrowserKind, BrowserTabs};
+use crate::model::{BrowserKind, BrowserWindows};
 
 pub struct Chrome;
 
@@ -15,12 +15,12 @@ impl BrowserSource for Chrome {
         chrome_profile_dirs().is_ok()
     }
 
-    fn export_tabs(&self) -> Result<BrowserTabs> {
+    fn export_tabs(&self) -> Result<BrowserWindows> {
         let profiles = chrome_profile_dirs()?;
-        let tabs = snss::read_chromium_sessions(&profiles, "Chrome")?;
-        Ok(BrowserTabs {
+        let windows = snss::read_chromium_sessions(&profiles, "Chrome")?;
+        Ok(BrowserWindows {
             browser: BrowserKind::Chrome,
-            tabs,
+            windows,
         })
     }
 }

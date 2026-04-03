@@ -53,12 +53,23 @@ pub struct Tab {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct BrowserTabs {
-    pub browser: BrowserKind,
+pub struct Window {
     pub tabs: Vec<Tab>,
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct BrowserWindows {
+    pub browser: BrowserKind,
+    pub windows: Vec<Window>,
+}
+
+impl BrowserWindows {
+    pub fn tab_count(&self) -> usize {
+        self.windows.iter().map(|w| w.tabs.len()).sum()
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct Export {
-    pub browsers: Vec<BrowserTabs>,
+    pub browsers: Vec<BrowserWindows>,
 }

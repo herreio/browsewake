@@ -1,7 +1,7 @@
 use crate::browser::BrowserSource;
 use crate::browser::paths::firefox_profile_dirs;
 use crate::error::{BrowseWakeError, Result};
-use crate::model::{BrowserKind, BrowserTabs, NavEntry, Tab};
+use crate::model::{BrowserKind, BrowserWindows, NavEntry, Tab, Window};
 use std::fs;
 use std::path::Path;
 
@@ -18,28 +18,28 @@ impl BrowserSource for Firefox {
         firefox_profile_dirs().is_ok()
     }
 
-    fn export_tabs(&self) -> Result<BrowserTabs> {
+    fn export_tabs(&self) -> Result<BrowserWindows> {
         let profiles = firefox_profile_dirs()?;
-        let mut all_tabs = Vec::new();
+        let mut all_windows = Vec::new();
 
         for profile in &profiles {
             let recovery = profile.join("sessionstore-backups/recovery.jsonlz4");
             if recovery.exists() {
                 match read_session(&recovery) {
-                    Ok(tabs) => all_tabs.extend(tabs),
+                    Ok(windows) => all_windows.extend(windows),
                     Err(e) => eprintln!("warning: failed to read {}: {e}", recovery.display()),
                 }
             }
         }
 
-        Ok(BrowserTabs {
+        Ok(BrowserWindows {
             browser: BrowserKind::Firefox,
-            tabs: all_tabs,
+            windows: all_windows,
         })
     }
 }
 
-fn read_session(path: &Path) -> Result<Vec<Tab>> {
+fn read_session(path: &Path) -> Result<Vec<Window>> {
     let data = fs::read(path)?;
     let json = decompress_mozlz4(&data)?;
     let session: serde_json::Value = serde_json::from_slice(&json)?;
@@ -67,18 +67,20 @@ fn decompress_mozlz4(data: &[u8]) -> Result<Vec<u8>> {
         .map_err(|e| BrowseWakeError::Lz4(e.to_string()))
 }
 
-fn parse_session(session: &serde_json::Value) -> Result<Vec<Tab>> {
-    let mut tabs = Vec::new();
-
-    let windows = session["windows"]
+fn parse_session(session: &serde_json::Value) -> Result<Vec<Window>> {
+    let json_windows = session["windows"]
         .as_array()
         .ok_or_else(|| BrowseWakeError::MozLz4("missing 'windows' array".into()))?;
 
-    for window in windows {
-        let window_tabs = match window["tabs"].as_array() {
+    let mut windows = Vec::new();
+
+    for json_window in json_windows {
+        let window_tabs = match json_window["tabs"].as_array() {
             Some(t) => t,
             None => continue,
         };
+
+        let mut tabs = Vec::new();
 
         for tab_value in window_tabs {
             let entries = match tab_value["entries"].as_array() {
@@ -119,7 +121,11 @@ fn parse_session(session: &serde_json::Value) -> Result<Vec<Tab>> {
                 current_index,
             });
         }
+
+        if !tabs.is_empty() {
+            windows.push(Window { tabs });
+        }
     }
 
-    Ok(tabs)
+    Ok(windows)
 }

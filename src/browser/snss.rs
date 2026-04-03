@@ -1,5 +1,5 @@
 use crate::error::{BrowseWakeError, Result};
-use crate::model::{NavEntry, Tab};
+use crate::model::{NavEntry, Tab, Window};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -7,7 +7,8 @@ use std::path::{Path, PathBuf};
 const SNSS_MAGIC: &[u8] = b"SNSS";
 // In Tabs_* files, command ID 1 is UpdateTabNavigation
 const CMD_TABS_UPDATE_TAB_NAVIGATION: u8 = 1;
-// In Session_* files, command ID 6 is UpdateTabNavigation
+// In Session_* files, command ID 0 is SetTabWindow, 6 is UpdateTabNavigation
+const CMD_SESSION_SET_TAB_WINDOW: u8 = 0;
 const CMD_SESSION_UPDATE_TAB_NAVIGATION: u8 = 6;
 
 struct SnssTab {
@@ -32,14 +33,14 @@ fn read_i32_le(data: &[u8], offset: usize) -> Option<i32> {
         .map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]))
 }
 
-/// Read tabs from Chromium-based browser session directories.
-pub fn read_chromium_sessions(profiles: &[PathBuf], browser_name: &str) -> Result<Vec<Tab>> {
-    let mut all_tabs = Vec::new();
+/// Read tabs from Chromium-based browser session directories, grouped by window.
+pub fn read_chromium_sessions(profiles: &[PathBuf], browser_name: &str) -> Result<Vec<Window>> {
+    let mut all_windows = Vec::new();
     for profile in profiles {
         let sessions_dir = profile.join("Sessions");
         if sessions_dir.is_dir() {
             match read_session(&sessions_dir) {
-                Ok(tabs) => all_tabs.extend(tabs),
+                Ok(windows) => all_windows.extend(windows),
                 Err(e) => eprintln!(
                     "warning: failed to read {browser_name} session in {}: {e}",
                     profile.display()
@@ -47,31 +48,115 @@ pub fn read_chromium_sessions(profiles: &[PathBuf], browser_name: &str) -> Resul
             }
         }
     }
-    Ok(all_tabs)
+    Ok(all_windows)
 }
 
-fn read_session(sessions_dir: &Path) -> Result<Vec<Tab>> {
+fn read_session(sessions_dir: &Path) -> Result<Vec<Window>> {
     // Session files are live journals covering all windows and are most up-to-date.
-    // Tabs files are periodic snapshots. Prefer Session files; fall back to Tabs.
-    let mut tab_navs: HashMap<i32, Vec<(usize, String, String)>> = HashMap::new();
-
+    // They also contain SetTabWindow commands for window grouping.
+    // Tabs files are periodic snapshots without window info. Fall back to them.
     if let Some(session_file) = find_latest_file(sessions_dir, "Session_*") {
         let data = fs::read(&session_file)?;
-        collect_tab_navs(&data, CMD_SESSION_UPDATE_TAB_NAVIGATION, &mut tab_navs)?;
-    }
-
-    if tab_navs.is_empty() {
-        if let Some(tabs_file) = find_latest_file(sessions_dir, "Tabs_*") {
-            let data = fs::read(&tabs_file)?;
-            collect_tab_navs(&data, CMD_TABS_UPDATE_TAB_NAVIGATION, &mut tab_navs)?;
+        let windows = parse_session_file(&data)?;
+        if !windows.is_empty() {
+            return Ok(windows);
         }
     }
 
-    if tab_navs.is_empty() {
-        return Err(BrowseWakeError::NoProfile("(no session files)".into()));
+    if let Some(tabs_file) = find_latest_file(sessions_dir, "Tabs_*") {
+        let data = fs::read(&tabs_file)?;
+        let mut tab_navs: HashMap<i32, Vec<(usize, String, String)>> = HashMap::new();
+        collect_tab_navs(&data, CMD_TABS_UPDATE_TAB_NAVIGATION, &mut tab_navs)?;
+        if !tab_navs.is_empty() {
+            let tabs = build_tabs(tab_navs)?;
+            return Ok(vec![Window { tabs }]);
+        }
     }
 
-    build_tabs(tab_navs)
+    Err(BrowseWakeError::NoProfile("(no session files)".into()))
+}
+
+/// Parse a Session_* file, extracting both tab-to-window mappings and navigation entries.
+fn parse_session_file(data: &[u8]) -> Result<Vec<Window>> {
+    if data.len() < 8 || &data[..4] != SNSS_MAGIC {
+        return Err(BrowseWakeError::Snss("invalid SNSS header".into()));
+    }
+
+    let mut tab_navs: HashMap<i32, Vec<(usize, String, String)>> = HashMap::new();
+    let mut tab_to_window: HashMap<i32, i32> = HashMap::new();
+    let mut offset = 8;
+
+    while offset + 2 <= data.len() {
+        let cmd_len = read_u16_le(data, offset).unwrap() as usize;
+        offset += 2;
+
+        if cmd_len == 0 || offset + cmd_len > data.len() {
+            break;
+        }
+
+        let cmd = &data[offset..offset + cmd_len];
+        let cmd_id = cmd[0];
+
+        match cmd_id {
+            CMD_SESSION_SET_TAB_WINDOW if cmd.len() >= 9 => {
+                // SetTabWindow: u8 cmd_id, i32 window_id, i32 tab_id
+                let window_id = read_i32_le(cmd, 1).unwrap();
+                let tab_id = read_i32_le(cmd, 5).unwrap();
+                tab_to_window.insert(tab_id, window_id);
+            }
+            CMD_SESSION_UPDATE_TAB_NAVIGATION => {
+                if let Some(tab) = parse_tab_command(cmd) {
+                    tab_navs
+                        .entry(tab.id)
+                        .or_default()
+                        .push((tab.index as usize, tab.url, tab.title));
+                }
+            }
+            _ => {}
+        }
+
+        offset += cmd_len;
+    }
+
+    // Group tabs by window
+    let mut window_tab_navs: HashMap<i32, HashMap<i32, Vec<(usize, String, String)>>> =
+        HashMap::new();
+    let mut unassigned: HashMap<i32, Vec<(usize, String, String)>> = HashMap::new();
+
+    for (tab_id, navs) in tab_navs {
+        if let Some(&window_id) = tab_to_window.get(&tab_id) {
+            window_tab_navs
+                .entry(window_id)
+                .or_default()
+                .insert(tab_id, navs);
+        } else {
+            unassigned.insert(tab_id, navs);
+        }
+    }
+
+    let mut windows = Vec::new();
+
+    // Build windows in sorted order for deterministic output
+    let mut window_ids: Vec<_> = window_tab_navs.keys().copied().collect();
+    window_ids.sort();
+
+    for window_id in window_ids {
+        let tab_map = window_tab_navs.remove(&window_id).unwrap();
+        let tabs = build_tabs(tab_map)?;
+        if !tabs.is_empty() {
+            windows.push(Window { tabs });
+        }
+    }
+
+    // Put any unassigned tabs in their own window
+    if !unassigned.is_empty() {
+        let tabs = build_tabs(unassigned)?;
+        if !tabs.is_empty() {
+            windows.push(Window { tabs });
+        }
+    }
+
+    Ok(windows)
 }
 
 fn find_latest_file(sessions_dir: &Path, prefix: &str) -> Option<PathBuf> {
@@ -99,7 +184,7 @@ fn collect_tab_navs(
         return Err(BrowseWakeError::Snss("invalid SNSS header".into()));
     }
 
-    let mut offset = 8; // skip magic + version
+    let mut offset = 8;
 
     while offset + 2 <= data.len() {
         let cmd_len = read_u16_le(data, offset).unwrap() as usize;
