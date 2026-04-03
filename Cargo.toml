@@ -5,6 +5,9 @@ edition = "2024"
 description = "Export browser tabs and per-tab navigation history from Firefox, Chrome, Brave, and Safari"
 repository = "https://github.com/herreio/browsewake"
 license = "MIT"
+keywords = ["browser", "tabs", "history", "cli"]
+categories = ["command-line-utilities"]
+include = ["src/**", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
