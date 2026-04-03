@@ -2,7 +2,9 @@
 name = "browsewake"
 version = "0.1.0"
 edition = "2024"
-description = "Export browser tabs and per-tab navigation history from Firefox, Chrome, and Safari"
+description = "Export browser tabs and per-tab navigation history from Firefox, Chrome, Brave, and Safari"
+repository = "https://github.com/herreio/browsewake"
+license = "MIT"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
@@ -15,3 +17,8 @@ dirs = "6"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 rusqlite = { version = "0.32", features = ["bundled"] }
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
