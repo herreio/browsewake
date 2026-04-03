@@ -5,7 +5,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const SNSS_MAGIC: &[u8] = b"SNSS";
-const CMD_UPDATE_TAB_NAVIGATION: u8 = 1;
+// In Tabs_* files, command ID 1 is UpdateTabNavigation
+const CMD_TABS_UPDATE_TAB_NAVIGATION: u8 = 1;
+// In Session_* files, command ID 6 is UpdateTabNavigation
+const CMD_SESSION_UPDATE_TAB_NAVIGATION: u8 = 6;
 
 struct SnssTab {
     id: i32,
@@ -48,29 +51,32 @@ pub fn read_chromium_sessions(profiles: &[PathBuf], browser_name: &str) -> Resul
 }
 
 fn read_session(sessions_dir: &Path) -> Result<Vec<Tab>> {
-    let session_file = find_latest_session(sessions_dir)?;
-    let data = fs::read(&session_file)?;
-    parse_snss(&data)
-}
+    // Session files are live journals covering all windows and are most up-to-date.
+    // Tabs files are periodic snapshots. Prefer Session files; fall back to Tabs.
+    let mut tab_navs: HashMap<i32, Vec<(usize, String, String)>> = HashMap::new();
 
-fn find_latest_session(sessions_dir: &Path) -> Result<PathBuf> {
-    let pattern = sessions_dir.join("Tabs_*").to_string_lossy().to_string();
-    let mut files: Vec<_> = glob::glob(&pattern)
-        .map_err(|e| BrowseWakeError::Other(e.to_string()))?
-        .flatten()
-        .collect();
-
-    if files.is_empty() {
-        let pattern = sessions_dir.join("Session_*").to_string_lossy().to_string();
-        files = glob::glob(&pattern)
-            .map_err(|e| BrowseWakeError::Other(e.to_string()))?
-            .flatten()
-            .collect();
+    if let Some(session_file) = find_latest_file(sessions_dir, "Session_*") {
+        let data = fs::read(&session_file)?;
+        collect_tab_navs(&data, CMD_SESSION_UPDATE_TAB_NAVIGATION, &mut tab_navs)?;
     }
 
-    if files.is_empty() {
+    if tab_navs.is_empty() {
+        if let Some(tabs_file) = find_latest_file(sessions_dir, "Tabs_*") {
+            let data = fs::read(&tabs_file)?;
+            collect_tab_navs(&data, CMD_TABS_UPDATE_TAB_NAVIGATION, &mut tab_navs)?;
+        }
+    }
+
+    if tab_navs.is_empty() {
         return Err(BrowseWakeError::NoProfile("(no session files)".into()));
     }
+
+    build_tabs(tab_navs)
+}
+
+fn find_latest_file(sessions_dir: &Path, prefix: &str) -> Option<PathBuf> {
+    let pattern = sessions_dir.join(prefix).to_string_lossy().to_string();
+    let mut files: Vec<_> = glob::glob(&pattern).ok()?.flatten().collect();
 
     files.sort_by_key(|f| {
         std::cmp::Reverse(
@@ -80,17 +86,20 @@ fn find_latest_session(sessions_dir: &Path) -> Result<PathBuf> {
         )
     });
 
-    Ok(files.into_iter().next().unwrap())
+    files.into_iter().next()
 }
 
-/// Parse an SNSS file (Chrome/Brave session format) into a list of tabs.
-fn parse_snss(data: &[u8]) -> Result<Vec<Tab>> {
+/// Extract tab navigation entries from an SNSS file into the shared map.
+fn collect_tab_navs(
+    data: &[u8],
+    nav_cmd_id: u8,
+    tab_navs: &mut HashMap<i32, Vec<(usize, String, String)>>,
+) -> Result<()> {
     if data.len() < 8 || &data[..4] != SNSS_MAGIC {
         return Err(BrowseWakeError::Snss("invalid SNSS header".into()));
     }
 
     let mut offset = 8; // skip magic + version
-    let mut tab_navs: HashMap<i32, Vec<(usize, String, String)>> = HashMap::new();
 
     while offset + 2 <= data.len() {
         let cmd_len = read_u16_le(data, offset).unwrap() as usize;
@@ -101,7 +110,7 @@ fn parse_snss(data: &[u8]) -> Result<Vec<Tab>> {
         }
 
         let cmd_id = data[offset];
-        if cmd_id == CMD_UPDATE_TAB_NAVIGATION {
+        if cmd_id == nav_cmd_id {
             if let Some(tab) = parse_tab_command(&data[offset..offset + cmd_len]) {
                 tab_navs
                     .entry(tab.id)
@@ -113,7 +122,7 @@ fn parse_snss(data: &[u8]) -> Result<Vec<Tab>> {
         offset += cmd_len;
     }
 
-    build_tabs(tab_navs)
+    Ok(())
 }
 
 fn parse_tab_command(cmd: &[u8]) -> Option<SnssTab> {
