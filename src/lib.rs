@@ -27,6 +27,7 @@ pub fn export_browsers(
                         for tab in &mut window.tabs {
                             tab.history.clear();
                             tab.current_index = None;
+                            tab.deep_history.clear();
                         }
                     }
                 }
