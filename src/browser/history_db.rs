@@ -241,3 +241,205 @@ fn walk_from_visit_chain(
 
     Ok(visits)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_test_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE urls (
+                id INTEGER PRIMARY KEY,
+                url TEXT NOT NULL,
+                title TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE visits (
+                id INTEGER PRIMARY KEY,
+                url INTEGER NOT NULL REFERENCES urls(id),
+                visit_time INTEGER NOT NULL,
+                from_visit INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE context_annotations (
+                visit_id INTEGER PRIMARY KEY REFERENCES visits(id),
+                tab_id INTEGER NOT NULL
+            );",
+        )
+        .unwrap();
+        conn
+    }
+
+    fn insert_url(conn: &Connection, id: i64, url: &str, title: &str) {
+        conn.execute(
+            "INSERT INTO urls (id, url, title) VALUES (?, ?, ?)",
+            rusqlite::params![id, url, title],
+        )
+        .unwrap();
+    }
+
+    fn insert_visit(conn: &Connection, id: i64, url_id: i64, time: i64, from_visit: i64) {
+        conn.execute(
+            "INSERT INTO visits (id, url, visit_time, from_visit) VALUES (?, ?, ?, ?)",
+            rusqlite::params![id, url_id, time, from_visit],
+        )
+        .unwrap();
+    }
+
+    fn annotate(conn: &Connection, visit_id: i64, tab_id: i32) {
+        conn.execute(
+            "INSERT INTO context_annotations (visit_id, tab_id) VALUES (?, ?)",
+            rusqlite::params![visit_id, tab_id],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn walks_backward_to_root_and_forward_through_chain() {
+        let conn = create_test_db();
+        // Linear chain: A -> B -> C (anchor)
+        insert_url(&conn, 1, "https://a.example", "A");
+        insert_url(&conn, 2, "https://b.example", "B");
+        insert_url(&conn, 3, "https://c.example", "C");
+
+        insert_visit(&conn, 10, 1, 100, 0);
+        insert_visit(&conn, 11, 2, 200, 10);
+        insert_visit(&conn, 12, 3, 300, 11);
+
+        annotate(&conn, 10, 42);
+        annotate(&conn, 11, 42);
+        annotate(&conn, 12, 42);
+
+        let visits =
+            walk_from_visit_chain(&conn, 42, &["https://c.example".into()]).unwrap();
+
+        let urls: Vec<_> = visits.iter().map(|v| v.url.as_str()).collect();
+        assert_eq!(urls, vec!["https://a.example", "https://b.example", "https://c.example"]);
+        assert_eq!(visits[0].from_url, None);
+        assert_eq!(visits[1].from_url.as_deref(), Some("https://a.example"));
+        assert_eq!(visits[2].from_url.as_deref(), Some("https://b.example"));
+    }
+
+    #[test]
+    fn includes_branching_descendants_for_same_tab() {
+        let conn = create_test_db();
+        // Tree: A -> B -> C, A -> D (branch from same root)
+        insert_url(&conn, 1, "https://root.example", "Root");
+        insert_url(&conn, 2, "https://b.example", "B");
+        insert_url(&conn, 3, "https://c.example", "C");
+        insert_url(&conn, 4, "https://d.example", "D");
+
+        insert_visit(&conn, 10, 1, 100, 0);
+        insert_visit(&conn, 11, 2, 200, 10);
+        insert_visit(&conn, 12, 3, 300, 11);
+        insert_visit(&conn, 13, 4, 400, 10); // branch from root
+
+        for v in [10, 11, 12, 13] {
+            annotate(&conn, v, 55);
+        }
+
+        let visits =
+            walk_from_visit_chain(&conn, 55, &["https://c.example".into()]).unwrap();
+
+        let urls: Vec<_> = visits.iter().map(|v| v.url.as_str()).collect();
+        assert_eq!(
+            urls,
+            vec![
+                "https://root.example",
+                "https://b.example",
+                "https://c.example",
+                "https://d.example",
+            ]
+        );
+    }
+
+    #[test]
+    fn excludes_visits_annotated_for_different_tab() {
+        let conn = create_test_db();
+        // A -> B (tab 42), A -> C (tab 99, different tab branching from same root)
+        insert_url(&conn, 1, "https://root.example", "Root");
+        insert_url(&conn, 2, "https://same-tab.example", "Same");
+        insert_url(&conn, 3, "https://other-tab.example", "Other");
+
+        insert_visit(&conn, 10, 1, 100, 0);
+        insert_visit(&conn, 11, 2, 200, 10);
+        insert_visit(&conn, 12, 3, 300, 10); // branches from root but different tab
+
+        annotate(&conn, 10, 42);
+        annotate(&conn, 11, 42);
+        annotate(&conn, 12, 99); // different tab
+
+        let visits =
+            walk_from_visit_chain(&conn, 42, &["https://same-tab.example".into()]).unwrap();
+
+        let urls: Vec<_> = visits.iter().map(|v| v.url.as_str()).collect();
+        assert_eq!(urls, vec!["https://root.example", "https://same-tab.example"]);
+    }
+
+    #[test]
+    fn includes_unannotated_redirect_intermediaries() {
+        let conn = create_test_db();
+        // A -> redirect (no annotation) -> B
+        insert_url(&conn, 1, "https://a.example", "A");
+        insert_url(&conn, 2, "https://redirect.example", "Redirect");
+        insert_url(&conn, 3, "https://b.example", "B");
+
+        insert_visit(&conn, 10, 1, 100, 0);
+        insert_visit(&conn, 11, 2, 200, 10); // no annotation
+        insert_visit(&conn, 12, 3, 300, 11);
+
+        annotate(&conn, 10, 42);
+        // visit 11 deliberately has no annotation
+        annotate(&conn, 12, 42);
+
+        let visits =
+            walk_from_visit_chain(&conn, 42, &["https://b.example".into()]).unwrap();
+
+        let urls: Vec<_> = visits.iter().map(|v| v.url.as_str()).collect();
+        assert_eq!(
+            urls,
+            vec!["https://a.example", "https://redirect.example", "https://b.example"]
+        );
+    }
+
+    #[test]
+    fn returns_empty_when_no_anchor_matches() {
+        let conn = create_test_db();
+        insert_url(&conn, 1, "https://a.example", "A");
+        insert_visit(&conn, 10, 1, 100, 0);
+        annotate(&conn, 10, 42);
+
+        let visits =
+            walk_from_visit_chain(&conn, 42, &["https://nonexistent.example".into()]).unwrap();
+
+        assert!(visits.is_empty());
+    }
+
+    #[test]
+    fn anchors_to_earliest_matching_visit() {
+        let conn = create_test_db();
+        // Two chains, both containing the anchor URL.
+        // Chain 1: A -> B (anchor). Chain 2: C -> B (anchor, later).
+        // Should walk from A (root of earliest anchor), not C.
+        insert_url(&conn, 1, "https://a.example", "A");
+        insert_url(&conn, 2, "https://anchor.example", "Anchor");
+        insert_url(&conn, 3, "https://c.example", "C");
+
+        insert_visit(&conn, 10, 1, 100, 0);
+        insert_visit(&conn, 11, 2, 200, 10); // anchor, earliest
+        insert_visit(&conn, 12, 3, 300, 0);
+        insert_visit(&conn, 13, 2, 400, 12); // anchor, later
+
+        for v in [10, 11, 12, 13] {
+            annotate(&conn, v, 42);
+        }
+
+        let visits =
+            walk_from_visit_chain(&conn, 42, &["https://anchor.example".into()]).unwrap();
+
+        // Should include chain from A (root of earliest anchor), which also
+        // captures the C branch since C -> anchor(13) descends from different root
+        let urls: Vec<_> = visits.iter().map(|v| v.url.as_str()).collect();
+        assert_eq!(urls[0], "https://a.example");
+        assert_eq!(urls[1], "https://anchor.example");
+    }
+}
