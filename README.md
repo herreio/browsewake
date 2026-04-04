@@ -30,6 +30,12 @@ Download the latest release for your platform from [GitHub Releases](https://git
 - Linux (x86_64, aarch64)
 - Windows (x86_64)
 
+On macOS, downloaded binaries are blocked by Gatekeeper. Remove the quarantine attribute after extracting:
+
+```
+xattr -d com.apple.quarantine /path/to/browsewake
+```
+
 ### From source
 
 ```
