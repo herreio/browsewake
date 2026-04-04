@@ -27,6 +27,10 @@ struct Cli {
     #[arg(long)]
     compact: bool,
 
+    /// Augment Chromium tabs with full visit history from the History database
+    #[arg(long)]
+    deep_history: bool,
+
     /// Write to file instead of stdout
     #[arg(short, long)]
     output: Option<String>,
@@ -52,7 +56,7 @@ fn main() {
 
     let include_history = !cli.no_history;
 
-    let export = match browsewake::export_browsers(&cli.browsers, include_history) {
+    let export = match browsewake::export_browsers(&cli.browsers, include_history, cli.deep_history) {
         Ok(e) => e,
         Err(e) => {
             eprintln!("error: {e}");

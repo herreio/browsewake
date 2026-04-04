@@ -58,6 +58,21 @@ fn write_text(w: &mut dyn Write, export: &Export) -> Result<()> {
                         writeln!(w, "      [{}] {}{}", entry.index, entry.url, marker)?;
                     }
                 }
+                if !tab.deep_history.is_empty() {
+                    writeln!(
+                        w,
+                        "    Deep History ({} visits):",
+                        tab.deep_history.len()
+                    )?;
+                    for visit in &tab.deep_history {
+                        let from = visit
+                            .from_url
+                            .as_deref()
+                            .map(|u| format!(" <- {u}"))
+                            .unwrap_or_default();
+                        writeln!(w, "      {}{}", visit.url, from)?;
+                    }
+                }
             }
         }
         writeln!(w)?;

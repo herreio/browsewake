@@ -43,6 +43,15 @@ pub struct NavEntry {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct VisitEntry {
+    pub url: String,
+    pub title: String,
+    pub visit_time: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct Tab {
     pub url: String,
     pub title: String,
@@ -50,6 +59,10 @@ pub struct Tab {
     pub history: Vec<NavEntry>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_index: Option<usize>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub deep_history: Vec<VisitEntry>,
+    #[serde(skip)]
+    pub tab_id: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize)]

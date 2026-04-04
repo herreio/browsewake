@@ -51,13 +51,22 @@ fn read_i32_le(data: &[u8], offset: usize) -> Option<i32> {
 }
 
 /// Read tabs from Chromium-based browser session directories, grouped by window.
-pub fn read_chromium_sessions(profiles: &[PathBuf], browser_name: &str) -> Result<Vec<Window>> {
+pub fn read_chromium_sessions(
+    profiles: &[PathBuf],
+    browser_name: &str,
+    deep_history: bool,
+) -> Result<Vec<Window>> {
     let mut all_windows = Vec::new();
     for profile in profiles {
         let sessions_dir = profile.join("Sessions");
         if sessions_dir.is_dir() {
             match read_session(&sessions_dir) {
-                Ok(windows) => all_windows.extend(windows),
+                Ok(mut windows) => {
+                    if deep_history {
+                        super::history_db::augment_windows(profile, &mut windows, browser_name);
+                    }
+                    all_windows.extend(windows);
+                }
                 Err(e) => eprintln!(
                     "warning: failed to read {browser_name} session in {}: {e}",
                     profile.display()
@@ -370,7 +379,7 @@ fn build_tabs(mut tab_states: Vec<(i32, TabState)>) -> Result<Vec<Tab>> {
 
     let mut tabs = Vec::new();
 
-    for (_tab_id, mut state) in tab_states {
+    for (tab_id, mut state) in tab_states {
         let navs = &mut state.navs;
         navs.sort_by_key(|(idx, _, _)| *idx);
 
@@ -402,6 +411,8 @@ fn build_tabs(mut tab_states: Vec<(i32, TabState)>) -> Result<Vec<Tab>> {
                 title,
                 history,
                 current_index,
+                deep_history: Vec::new(),
+                tab_id: Some(tab_id),
             });
         }
     }

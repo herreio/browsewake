@@ -18,7 +18,7 @@ impl BrowserSource for Firefox {
         firefox_profile_dirs().is_ok()
     }
 
-    fn export_tabs(&self) -> Result<BrowserWindows> {
+    fn export_tabs(&self, _deep_history: bool) -> Result<BrowserWindows> {
         let profiles = firefox_profile_dirs()?;
         let mut all_windows = Vec::new();
 
@@ -121,6 +121,8 @@ fn parse_session(session: &serde_json::Value) -> Result<Vec<Window>> {
                 title,
                 history,
                 current_index,
+                deep_history: Vec::new(),
+                tab_id: None,
             });
         }
 

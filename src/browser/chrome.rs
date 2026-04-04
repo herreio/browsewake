@@ -15,9 +15,9 @@ impl BrowserSource for Chrome {
         chrome_profile_dirs().is_ok()
     }
 
-    fn export_tabs(&self) -> Result<BrowserWindows> {
+    fn export_tabs(&self, deep_history: bool) -> Result<BrowserWindows> {
         let profiles = chrome_profile_dirs()?;
-        let windows = snss::read_chromium_sessions(&profiles, "Chrome")?;
+        let windows = snss::read_chromium_sessions(&profiles, "Chrome", deep_history)?;
         Ok(BrowserWindows {
             browser: BrowserKind::Chrome,
             windows,

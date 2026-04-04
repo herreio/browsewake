@@ -15,9 +15,9 @@ impl BrowserSource for Brave {
         brave_profile_dirs().is_ok()
     }
 
-    fn export_tabs(&self) -> Result<BrowserWindows> {
+    fn export_tabs(&self, deep_history: bool) -> Result<BrowserWindows> {
         let profiles = brave_profile_dirs()?;
-        let windows = snss::read_chromium_sessions(&profiles, "Brave")?;
+        let windows = snss::read_chromium_sessions(&profiles, "Brave", deep_history)?;
         Ok(BrowserWindows {
             browser: BrowserKind::Brave,
             windows,

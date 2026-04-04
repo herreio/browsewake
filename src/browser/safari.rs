@@ -18,7 +18,7 @@ impl BrowserSource for Safari {
         safari_data_dir().is_ok()
     }
 
-    fn export_tabs(&self) -> Result<BrowserWindows> {
+    fn export_tabs(&self, _deep_history: bool) -> Result<BrowserWindows> {
         match read_safari_tabs() {
             Ok(windows) => Ok(BrowserWindows {
                 browser: BrowserKind::Safari,
@@ -74,6 +74,8 @@ fn read_cloud_tabs_db(path: &std::path::Path) -> Result<Vec<Tab>> {
                 title: row.get::<_, String>(1).unwrap_or_default(),
                 history: Vec::new(),
                 current_index: None,
+                deep_history: Vec::new(),
+                tab_id: None,
             })
         })?
         .filter_map(|r| r.ok())
@@ -100,6 +102,8 @@ fn read_browser_state_db(path: &std::path::Path) -> Result<Vec<Tab>> {
                         title: row.get::<_, String>(1).unwrap_or_default(),
                         history: Vec::new(),
                         current_index: None,
+                        deep_history: Vec::new(),
+                        tab_id: None,
                     })
                 })
                 .ok()
@@ -156,6 +160,8 @@ fn read_safari_jxa() -> Result<Vec<Window>> {
                     title: v["title"].as_str().unwrap_or("").to_string(),
                     history: Vec::new(),
                     current_index: None,
+                    deep_history: Vec::new(),
+                    tab_id: None,
                 })
                 .collect();
             Window { tabs }

@@ -1,6 +1,7 @@
 pub mod brave;
 pub mod chrome;
 pub mod firefox;
+pub mod history_db;
 pub mod paths;
 #[cfg(target_os = "macos")]
 pub mod safari;
@@ -12,7 +13,7 @@ use crate::model::{BrowserKind, BrowserWindows};
 pub trait BrowserSource {
     fn kind(&self) -> BrowserKind;
     fn available(&self) -> bool;
-    fn export_tabs(&self) -> Result<BrowserWindows>;
+    fn export_tabs(&self, deep_history: bool) -> Result<BrowserWindows>;
 }
 
 /// Returns browser sources for the requested browsers, or all available if none specified.

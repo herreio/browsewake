@@ -6,7 +6,11 @@ pub mod output;
 use error::Result;
 use model::{BrowserKind, BrowserWindows, Export};
 
-pub fn export_browsers(requested: &[BrowserKind], include_history: bool) -> Result<Export> {
+pub fn export_browsers(
+    requested: &[BrowserKind],
+    include_history: bool,
+    deep_history: bool,
+) -> Result<Export> {
     let sources = browser::get_sources(requested);
 
     if sources.is_empty() {
@@ -16,7 +20,7 @@ pub fn export_browsers(requested: &[BrowserKind], include_history: bool) -> Resu
     let mut browsers: Vec<BrowserWindows> = Vec::new();
 
     for source in &sources {
-        match source.export_tabs() {
+        match source.export_tabs(deep_history) {
             Ok(mut bw) => {
                 if !include_history {
                     for window in &mut bw.windows {

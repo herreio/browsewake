@@ -17,7 +17,6 @@ pub enum BrowseWakeError {
     #[error("SNSS parse error: {0}")]
     Snss(String),
 
-    #[cfg(target_os = "macos")]
     #[error("SQLite error: {0}")]
     Sqlite(#[from] rusqlite::Error),
 
