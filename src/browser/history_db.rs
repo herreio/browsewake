@@ -106,8 +106,8 @@ fn cleanup_temp(tmp: &Path) {
     }
 }
 
-/// Read history anchored to SNSS URLs, walking from_visit backward to recover
-/// only the causally connected chain for each tab.
+/// Read history anchored to SNSS URLs, collecting navigation trees connected
+/// to anchor URLs for each tab.
 fn read_anchored_history(
     history_path: &Path,
     tab_anchors: &[(i32, Vec<String>)],
@@ -132,10 +132,12 @@ fn read_anchored_history(
     Ok(map)
 }
 
-/// Collect all visits for a tab_id, using temporal anchoring to guard against
-/// tab_id reuse across browser sessions. Finds the latest SNSS-matching visit
-/// as an upper time bound, then returns all context_annotations visits for that
-/// tab_id up to that bound.
+/// Collect visits for a tab by walking backward from SNSS anchor URLs to find
+/// navigation tree roots, then forward to collect complete trees. Uses temporal
+/// anchoring (latest anchor visit_time) to guard against tab_id reuse across
+/// browser sessions. Includes unannotated intermediaries (e.g. redirects) but
+/// excludes visits annotated for a different tab and navigation trees not
+/// connected to any anchor URL.
 fn collect_tab_visits(
     conn: &Connection,
     tab_id: i32,
@@ -164,27 +166,94 @@ fn collect_tab_visits(
         params.iter().map(|p| p.as_ref()).collect();
 
     let upper_bound: Option<i64> =
-        conn.query_row(&anchor_sql, param_refs.as_slice(), |row| row.get(0)).ok().flatten();
+        conn.query_row(&anchor_sql, param_refs.as_slice(), |row| row.get(0))
+            .ok()
+            .flatten();
 
     let upper_bound = match upper_bound {
         Some(t) => t,
         None => return Ok(Vec::new()),
     };
 
-    // Step 2: Get all visits for this tab_id up to the temporal anchor.
-    let visits_sql =
-        "SELECT u.url, u.title, v.visit_time, fv_url.url AS from_url
-        FROM context_annotations ca
-        JOIN visits v ON v.id = ca.visit_id
+    // Step 2: Walk backward from anchor visits to find tree roots, then forward
+    // to collect the full navigation trees including unannotated intermediaries.
+    // The backward walk stops at cross-tab boundaries so we don't leak into
+    // other tabs' trees. Only trees containing an anchor URL are included.
+    let numbered_placeholders: String = (0..anchor_urls.len())
+        .map(|i| format!("?{}", i + 3))
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let chain_sql = format!(
+        "WITH RECURSIVE
+            anchor_visits(vid) AS (
+                SELECT v.id
+                FROM visits v
+                JOIN urls u ON u.id = v.url
+                JOIN context_annotations ca ON ca.visit_id = v.id
+                WHERE ca.tab_id = ?1 AND u.url IN ({numbered_placeholders})
+                  AND v.visit_time <= ?2
+            ),
+            -- Walk backward from anchors, stopping at cross-tab boundaries
+            backward(vid) AS (
+                SELECT vid FROM anchor_visits
+                UNION
+                SELECT v.from_visit
+                FROM backward b
+                JOIN visits v ON v.id = b.vid
+                WHERE v.from_visit != 0
+                  AND NOT EXISTS (
+                    SELECT 1 FROM context_annotations ca
+                    WHERE ca.visit_id = v.from_visit AND ca.tab_id != ?1
+                  )
+            ),
+            -- Roots: backward visits that are tree roots or at cross-tab boundaries
+            roots(vid) AS (
+                SELECT DISTINCT v.id FROM backward b
+                JOIN visits v ON v.id = b.vid
+                WHERE v.from_visit = 0
+                   OR v.from_visit NOT IN (SELECT vid FROM backward)
+            ),
+            -- Seed forward walk from both roots and anchor visits (anchors are
+            -- re-seeded in case a cross-tab visit blocks the path from root)
+            seeds(vid) AS (
+                SELECT vid FROM roots
+                UNION
+                SELECT vid FROM anchor_visits
+            ),
+            -- Walk forward, including same-tab and unannotated visits only
+            forward(vid) AS (
+                SELECT vid FROM seeds
+                UNION
+                SELECT v.id
+                FROM forward f
+                JOIN visits v ON v.from_visit = f.vid
+                WHERE v.visit_time <= ?2
+                  AND NOT EXISTS (
+                    SELECT 1 FROM context_annotations ca
+                    WHERE ca.visit_id = v.id AND ca.tab_id != ?1
+                  )
+            )
+        SELECT u.url, u.title, v.visit_time, fv_url.url AS from_url
+        FROM forward f
+        JOIN visits v ON v.id = f.vid
         JOIN urls u ON u.id = v.url
         LEFT JOIN visits fv ON fv.id = v.from_visit AND v.from_visit != 0
         LEFT JOIN urls fv_url ON fv_url.id = fv.url
-        WHERE ca.tab_id = ?
-          AND v.visit_time <= ?
-        ORDER BY v.visit_time ASC";
+        ORDER BY v.visit_time ASC"
+    );
 
-    let mut stmt = conn.prepare(visits_sql)?;
-    let mut rows = stmt.query(rusqlite::params![tab_id, upper_bound])?;
+    let mut chain_params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+    chain_params.push(Box::new(tab_id));
+    chain_params.push(Box::new(upper_bound));
+    for url in anchor_urls {
+        chain_params.push(Box::new(url.clone()));
+    }
+    let chain_param_refs: Vec<&dyn rusqlite::types::ToSql> =
+        chain_params.iter().map(|p| p.as_ref()).collect();
+
+    let mut stmt = conn.prepare(&chain_sql)?;
+    let mut rows = stmt.query(chain_param_refs.as_slice())?;
 
     let mut visits = Vec::new();
     while let Some(row) = rows.next()? {
@@ -256,7 +325,7 @@ mod tests {
     }
 
     #[test]
-    fn collects_all_annotated_visits_for_tab() {
+    fn walks_backward_to_root_and_forward_through_chain() {
         let conn = create_test_db();
         // Linear chain: A -> B -> C (anchor)
         insert_url(&conn, 1, "https://a.example", "A");
@@ -316,16 +385,16 @@ mod tests {
     }
 
     #[test]
-    fn excludes_visits_for_different_tab() {
+    fn excludes_visits_annotated_for_different_tab() {
         let conn = create_test_db();
-        // A (tab 42), B (tab 42), C (tab 99)
+        // A -> B (tab 42), A -> C (tab 99, different tab branching from same root)
         insert_url(&conn, 1, "https://root.example", "Root");
         insert_url(&conn, 2, "https://same-tab.example", "Same");
         insert_url(&conn, 3, "https://other-tab.example", "Other");
 
         insert_visit(&conn, 10, 1, 100, 0);
         insert_visit(&conn, 11, 2, 200, 10);
-        insert_visit(&conn, 12, 3, 300, 10);
+        insert_visit(&conn, 12, 3, 300, 10); // branches from root but different tab
 
         annotate(&conn, 10, 42);
         annotate(&conn, 11, 42);
@@ -339,10 +408,9 @@ mod tests {
     }
 
     #[test]
-    fn skips_unannotated_visits() {
+    fn includes_unannotated_redirect_intermediaries() {
         let conn = create_test_db();
         // A -> redirect (no annotation) -> B
-        // Unannotated visits are not included since we query by context_annotations
         insert_url(&conn, 1, "https://a.example", "A");
         insert_url(&conn, 2, "https://redirect.example", "Redirect");
         insert_url(&conn, 3, "https://b.example", "B");
@@ -359,7 +427,10 @@ mod tests {
             collect_tab_visits(&conn, 42, &["https://b.example".into()]).unwrap();
 
         let urls: Vec<_> = visits.iter().map(|v| v.url.as_str()).collect();
-        assert_eq!(urls, vec!["https://a.example", "https://b.example"]);
+        assert_eq!(
+            urls,
+            vec!["https://a.example", "https://redirect.example", "https://b.example"]
+        );
     }
 
     #[test]
@@ -376,18 +447,19 @@ mod tests {
     }
 
     #[test]
-    fn includes_disconnected_roots_for_same_tab() {
+    fn excludes_unconnected_trees_for_same_tab() {
         let conn = create_test_db();
-        // Multiple from_visit=0 roots on the same tab (typed URLs, bookmarks)
+        // Two disconnected trees in the same tab. Only the tree containing
+        // the anchor URL should be included.
         insert_url(&conn, 1, "https://typed1.example", "Typed1");
         insert_url(&conn, 2, "https://clicked.example", "Clicked");
         insert_url(&conn, 3, "https://typed2.example", "Typed2");
         insert_url(&conn, 4, "https://anchor.example", "Anchor");
 
-        insert_visit(&conn, 10, 1, 100, 0); // typed
-        insert_visit(&conn, 11, 2, 200, 10); // click from typed1
-        insert_visit(&conn, 12, 3, 300, 0); // typed (disconnected root)
-        insert_visit(&conn, 13, 4, 400, 12); // click from typed2 (anchor)
+        insert_visit(&conn, 10, 1, 100, 0); // typed (tree 1 root)
+        insert_visit(&conn, 11, 2, 200, 10); // click from typed1 (tree 1)
+        insert_visit(&conn, 12, 3, 300, 0); // typed (tree 2 root)
+        insert_visit(&conn, 13, 4, 400, 12); // click from typed2 (tree 2, anchor)
 
         for v in [10, 11, 12, 13] {
             annotate(&conn, v, 42);
@@ -397,14 +469,43 @@ mod tests {
             collect_tab_visits(&conn, 42, &["https://anchor.example".into()]).unwrap();
 
         let urls: Vec<_> = visits.iter().map(|v| v.url.as_str()).collect();
-        // All four visits should be included — the old chain walk would miss typed1 and clicked
+        // Only tree 2 (containing the anchor) is included; tree 1 is excluded.
+        assert_eq!(urls, vec!["https://typed2.example", "https://anchor.example"]);
+    }
+
+    #[test]
+    fn includes_multiple_trees_when_both_contain_anchors() {
+        let conn = create_test_db();
+        // Two disconnected trees, both containing anchor URLs.
+        insert_url(&conn, 1, "https://typed1.example", "Typed1");
+        insert_url(&conn, 2, "https://anchor1.example", "Anchor1");
+        insert_url(&conn, 3, "https://typed2.example", "Typed2");
+        insert_url(&conn, 4, "https://anchor2.example", "Anchor2");
+
+        insert_visit(&conn, 10, 1, 100, 0);
+        insert_visit(&conn, 11, 2, 200, 10);
+        insert_visit(&conn, 12, 3, 300, 0);
+        insert_visit(&conn, 13, 4, 400, 12);
+
+        for v in [10, 11, 12, 13] {
+            annotate(&conn, v, 42);
+        }
+
+        let visits = collect_tab_visits(
+            &conn,
+            42,
+            &["https://anchor1.example".into(), "https://anchor2.example".into()],
+        )
+        .unwrap();
+
+        let urls: Vec<_> = visits.iter().map(|v| v.url.as_str()).collect();
         assert_eq!(
             urls,
             vec![
                 "https://typed1.example",
-                "https://clicked.example",
+                "https://anchor1.example",
                 "https://typed2.example",
-                "https://anchor.example",
+                "https://anchor2.example",
             ]
         );
     }
@@ -434,18 +535,18 @@ mod tests {
     }
 
     #[test]
-    fn temporal_anchor_uses_latest_matching_visit() {
+    fn anchors_to_latest_matching_visit() {
         let conn = create_test_db();
-        // Anchor URL appears twice; temporal bound should use the latest match,
-        // capturing all visits in between.
+        // Anchor URL appears in two trees; both are connected to anchors,
+        // and temporal bound uses the latest match to capture everything.
         insert_url(&conn, 1, "https://a.example", "A");
         insert_url(&conn, 2, "https://anchor.example", "Anchor");
         insert_url(&conn, 3, "https://c.example", "C");
 
         insert_visit(&conn, 10, 1, 100, 0);
-        insert_visit(&conn, 11, 2, 200, 10); // anchor, earlier
+        insert_visit(&conn, 11, 2, 200, 10); // anchor, tree 1
         insert_visit(&conn, 12, 3, 300, 0);
-        insert_visit(&conn, 13, 2, 400, 12); // anchor, later
+        insert_visit(&conn, 13, 2, 400, 12); // anchor, tree 2
 
         for v in [10, 11, 12, 13] {
             annotate(&conn, v, 42);
@@ -455,7 +556,7 @@ mod tests {
             collect_tab_visits(&conn, 42, &["https://anchor.example".into()]).unwrap();
 
         let urls: Vec<_> = visits.iter().map(|v| v.url.as_str()).collect();
-        // All four visits included since temporal bound is the latest anchor (time 400)
+        // Both trees included since both contain the anchor URL
         assert_eq!(
             urls,
             vec![
