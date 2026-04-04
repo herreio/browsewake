@@ -174,8 +174,8 @@ fn walk_from_visit_chain(
     };
 
     // Walk backward from the anchor via from_visit to find the root,
-    // then collect the full forward chain from that root.
-    // Use a recursive CTE to walk the from_visit chain backward.
+    // then walk forward collecting only visits that belong to this tab_id
+    // (or lack annotations, e.g. redirect intermediaries).
     let chain_sql =
         "WITH RECURSIVE
             -- Walk backward from anchor to find the chain root
@@ -196,13 +196,18 @@ fn walk_from_visit_chain(
                 ORDER BY v.visit_time ASC
                 LIMIT 1
             ),
-            -- Walk forward from root through all from_visit descendants
+            -- Walk forward, only following descendants that belong to this
+            -- tab_id or have no context_annotations (redirect intermediaries)
             forward(vid) AS (
                 SELECT vid FROM chain_root
                 UNION ALL
                 SELECT v.id
                 FROM forward f
                 JOIN visits v ON v.from_visit = f.vid
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM context_annotations ca
+                    WHERE ca.visit_id = v.id AND ca.tab_id != ?2
+                )
             )
         SELECT
             u.url,
@@ -217,7 +222,7 @@ fn walk_from_visit_chain(
         ORDER BY v.visit_time ASC";
 
     let mut stmt = conn.prepare(chain_sql)?;
-    let mut rows = stmt.query([anchor_id])?;
+    let mut rows = stmt.query(rusqlite::params![anchor_id, tab_id])?;
 
     let mut visits = Vec::new();
     while let Some(row) = rows.next()? {
