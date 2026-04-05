@@ -11,7 +11,7 @@ use browsewake::output::{self, Format};
     about = "Export browser tabs and per-tab navigation history"
 )]
 struct Cli {
-    /// Browsers to export (firefox, chrome, safari). Default: all installed.
+    /// Browsers to export (firefox, chrome, brave, safari). Default: all installed.
     #[arg(value_parser = parse_browser)]
     browsers: Vec<BrowserKind>,
 
@@ -27,7 +27,7 @@ struct Cli {
     #[arg(long)]
     compact: bool,
 
-    /// Augment Chromium tabs with full visit history from the History database
+    /// Augment Chromium tabs with anchored visit history from the History database
     #[arg(long)]
     deep_history: bool,
 
@@ -56,7 +56,8 @@ fn main() {
 
     let include_history = !cli.no_history;
 
-    let export = match browsewake::export_browsers(&cli.browsers, include_history, cli.deep_history) {
+    let export = match browsewake::export_browsers(&cli.browsers, include_history, cli.deep_history)
+    {
         Ok(e) => e,
         Err(e) => {
             eprintln!("error: {e}");

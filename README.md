@@ -16,9 +16,9 @@ Browser extensions can export active tabs but not their back/forward history. Br
 | Brave   | Yes | Yes | Yes | SNSS session files + History SQLite DB |
 | Safari  | Yes | No  | — | JXA (AppleScript) / SQLite fallback |
 
-Safari maintains back/forward history internally, but it is not available through stable scripting or documented on-disk formats.
+**Deep history** (`--deep-history`): Chromium browsers record visits in a SQLite database with per-tab attribution. Browsewake anchors those visits to the current SNSS session history and reconstructs a causally connected visit tree for each tab. This is supplemental visit history, not an exact dump of the browser's visible back/forward list.
 
-**Deep history** (`--deep-history`): Chromium browsers record every page visit in a SQLite database with per-tab attribution. This recovers the complete navigation tree for each tab — including branches pruned from the back/forward stack — by walking the causal `from_visit` chain anchored to the current session data.
+Parser details, output semantics, and upstream references are documented in [SOURCES.md](SOURCES.md).
 
 ## Installation
 
@@ -71,7 +71,7 @@ browsewake firefox
 ```
 -f, --format <FORMAT>  Output format: json, text, csv [default: json]
     --no-history       Skip per-tab navigation history
-    --deep-history     Augment Chromium tabs with full visit history from the History database
+    --deep-history     Augment Chromium tabs with anchored visit history from the History database
     --compact          Compact JSON (no pretty-printing)
 -o, --output <FILE>    Write to file instead of stdout
 ```
@@ -83,7 +83,7 @@ browsewake firefox
 browsewake
 
 # Compact JSON for piping
-browsewake --compact | jq '.browsers[].tabs | length'
+browsewake --compact | jq '[.browsers[].windows[].tabs[]] | length'
 
 # Plain text overview
 browsewake --format text
@@ -97,7 +97,7 @@ browsewake --no-history
 # Single browser
 browsewake firefox --format text
 
-# Full visit history for Chrome/Brave tabs (from History DB)
+# Anchored Chromium visit history (supplemental, not CSV-exported)
 browsewake chrome --deep-history
 ```
 
