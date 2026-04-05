@@ -59,11 +59,7 @@ fn write_text(w: &mut dyn Write, export: &Export) -> Result<()> {
                     }
                 }
                 if !tab.deep_history.is_empty() {
-                    writeln!(
-                        w,
-                        "    Deep History ({} visits):",
-                        tab.deep_history.len()
-                    )?;
+                    writeln!(w, "    Deep History ({} visits):", tab.deep_history.len())?;
                     for visit in &tab.deep_history {
                         let from = visit
                             .from_url

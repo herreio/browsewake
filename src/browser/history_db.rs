@@ -70,9 +70,7 @@ fn open_history_db(history_path: &Path) -> Result<(Connection, Option<PathBuf>),
 }
 
 /// Copy the History file and its companion files to a temp location.
-fn open_history_db_copy(
-    history_path: &Path,
-) -> Result<(Connection, PathBuf), rusqlite::Error> {
+fn open_history_db_copy(history_path: &Path) -> Result<(Connection, PathBuf), rusqlite::Error> {
     let tmp = std::env::temp_dir().join(format!("browsewake-history-{}", std::process::id()));
     let copy_err = |e: std::io::Error| {
         rusqlite::Error::SqliteFailure(
@@ -148,7 +146,11 @@ fn collect_tab_visits(
     }
 
     // Step 1: Find the latest visit_time for any anchor URL on this tab_id.
-    let url_placeholders: String = anchor_urls.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let url_placeholders: String = anchor_urls
+        .iter()
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(",");
     let anchor_sql = format!(
         "SELECT MAX(v.visit_time)
         FROM visits v
@@ -162,13 +164,12 @@ fn collect_tab_visits(
     for url in anchor_urls {
         params.push(Box::new(url.clone()));
     }
-    let param_refs: Vec<&dyn rusqlite::types::ToSql> =
-        params.iter().map(|p| p.as_ref()).collect();
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
-    let upper_bound: Option<i64> =
-        conn.query_row(&anchor_sql, param_refs.as_slice(), |row| row.get(0))
-            .ok()
-            .flatten();
+    let upper_bound: Option<i64> = conn
+        .query_row(&anchor_sql, param_refs.as_slice(), |row| row.get(0))
+        .ok()
+        .flatten();
 
     let upper_bound = match upper_bound {
         Some(t) => t,
@@ -340,11 +341,17 @@ mod tests {
         annotate(&conn, 11, 42);
         annotate(&conn, 12, 42);
 
-        let visits =
-            collect_tab_visits(&conn, 42, &["https://c.example".into()]).unwrap();
+        let visits = collect_tab_visits(&conn, 42, &["https://c.example".into()]).unwrap();
 
         let urls: Vec<_> = visits.iter().map(|v| v.url.as_str()).collect();
-        assert_eq!(urls, vec!["https://a.example", "https://b.example", "https://c.example"]);
+        assert_eq!(
+            urls,
+            vec![
+                "https://a.example",
+                "https://b.example",
+                "https://c.example"
+            ]
+        );
         assert_eq!(visits[0].from_url, None);
         assert_eq!(visits[1].from_url.as_deref(), Some("https://a.example"));
         assert_eq!(visits[2].from_url.as_deref(), Some("https://b.example"));
@@ -369,8 +376,7 @@ mod tests {
             annotate(&conn, v, 55);
         }
 
-        let visits =
-            collect_tab_visits(&conn, 55, &["https://d.example".into()]).unwrap();
+        let visits = collect_tab_visits(&conn, 55, &["https://d.example".into()]).unwrap();
 
         let urls: Vec<_> = visits.iter().map(|v| v.url.as_str()).collect();
         assert_eq!(
@@ -400,11 +406,13 @@ mod tests {
         annotate(&conn, 11, 42);
         annotate(&conn, 12, 99); // different tab
 
-        let visits =
-            collect_tab_visits(&conn, 42, &["https://same-tab.example".into()]).unwrap();
+        let visits = collect_tab_visits(&conn, 42, &["https://same-tab.example".into()]).unwrap();
 
         let urls: Vec<_> = visits.iter().map(|v| v.url.as_str()).collect();
-        assert_eq!(urls, vec!["https://root.example", "https://same-tab.example"]);
+        assert_eq!(
+            urls,
+            vec!["https://root.example", "https://same-tab.example"]
+        );
     }
 
     #[test]
@@ -423,13 +431,16 @@ mod tests {
         // visit 11 deliberately has no annotation
         annotate(&conn, 12, 42);
 
-        let visits =
-            collect_tab_visits(&conn, 42, &["https://b.example".into()]).unwrap();
+        let visits = collect_tab_visits(&conn, 42, &["https://b.example".into()]).unwrap();
 
         let urls: Vec<_> = visits.iter().map(|v| v.url.as_str()).collect();
         assert_eq!(
             urls,
-            vec!["https://a.example", "https://redirect.example", "https://b.example"]
+            vec![
+                "https://a.example",
+                "https://redirect.example",
+                "https://b.example"
+            ]
         );
     }
 
@@ -465,12 +476,14 @@ mod tests {
             annotate(&conn, v, 42);
         }
 
-        let visits =
-            collect_tab_visits(&conn, 42, &["https://anchor.example".into()]).unwrap();
+        let visits = collect_tab_visits(&conn, 42, &["https://anchor.example".into()]).unwrap();
 
         let urls: Vec<_> = visits.iter().map(|v| v.url.as_str()).collect();
         // Only tree 2 (containing the anchor) is included; tree 1 is excluded.
-        assert_eq!(urls, vec!["https://typed2.example", "https://anchor.example"]);
+        assert_eq!(
+            urls,
+            vec!["https://typed2.example", "https://anchor.example"]
+        );
     }
 
     #[test]
@@ -494,7 +507,10 @@ mod tests {
         let visits = collect_tab_visits(
             &conn,
             42,
-            &["https://anchor1.example".into(), "https://anchor2.example".into()],
+            &[
+                "https://anchor1.example".into(),
+                "https://anchor2.example".into(),
+            ],
         )
         .unwrap();
 
@@ -527,8 +543,7 @@ mod tests {
         annotate(&conn, 11, 42);
         annotate(&conn, 12, 42); // same tab_id but future session
 
-        let visits =
-            collect_tab_visits(&conn, 42, &["https://anchor.example".into()]).unwrap();
+        let visits = collect_tab_visits(&conn, 42, &["https://anchor.example".into()]).unwrap();
 
         let urls: Vec<_> = visits.iter().map(|v| v.url.as_str()).collect();
         assert_eq!(urls, vec!["https://old.example", "https://anchor.example"]);
@@ -552,8 +567,7 @@ mod tests {
             annotate(&conn, v, 42);
         }
 
-        let visits =
-            collect_tab_visits(&conn, 42, &["https://anchor.example".into()]).unwrap();
+        let visits = collect_tab_visits(&conn, 42, &["https://anchor.example".into()]).unwrap();
 
         let urls: Vec<_> = visits.iter().map(|v| v.url.as_str()).collect();
         // Both trees included since both contain the anchor URL
