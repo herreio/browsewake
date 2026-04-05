@@ -48,6 +48,7 @@ This document records the data sources browsewake currently parses, the meaning 
 - **Format:** `SNSS` magic + 4 reserved bytes + stream of 2-byte-length-prefixed commands.
 - **Commands used by browsewake:**
   - `0` `SetTabWindow`
+  - `1` `UpdateTabNavigation` (Tabs_* files only)
   - `2` `SetTabIndexInWindow`
   - `5` `TabNavigationPathPrunedFromBack`
   - `6` `UpdateTabNavigation`

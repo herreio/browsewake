@@ -23,7 +23,7 @@ pub fn firefox_profile_dirs() -> Result<Vec<PathBuf>> {
 }
 
 /// Returns the Chrome user data directory for the current OS.
-pub fn chrome_user_data_dir() -> Result<PathBuf> {
+fn chrome_user_data_dir() -> Result<PathBuf> {
     let path = if cfg!(target_os = "macos") {
         dirs::home_dir()
             .ok_or_else(|| BrowseWakeError::Other("cannot determine home directory".into()))?
@@ -78,7 +78,7 @@ pub fn chrome_profile_dirs() -> Result<Vec<PathBuf>> {
 }
 
 /// Returns the Brave user data directory for the current OS.
-pub fn brave_user_data_dir() -> Result<PathBuf> {
+fn brave_user_data_dir() -> Result<PathBuf> {
     let path = if cfg!(target_os = "macos") {
         dirs::home_dir()
             .ok_or_else(|| BrowseWakeError::Other("cannot determine home directory".into()))?
