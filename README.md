@@ -16,7 +16,9 @@ Browser extensions can export active tabs but not their back/forward history. Br
 | Brave   | Yes | Yes | Yes | SNSS session files + History SQLite DB |
 | Safari  | Yes | No  | — | JXA (AppleScript) |
 
-**Deep history** (`--deep-history`): Chromium browsers record visits in a SQLite database with per-tab attribution. Browsewake anchors those visits to the current SNSS session history and reconstructs a causally connected visit tree for each tab. This is supplemental visit history, not an exact dump of the browser's visible back/forward list.
+**Deep history** (`--deep-history`): Chromium browsers record visits in a SQLite database with per-tab attribution. Browsewake anchors those visits to the current SNSS session history and reconstructs a causally connected visit tree for each tab. This is supplemental visit history, not an exact dump of the browser's visible back/forward list, and it is not used to extend `history[]`.
+
+Safari remains current-tabs-only. Browsewake does not currently expose Safari per-tab back/forward history because no stable standalone CLI surface has been validated for it.
 
 Parser details, output semantics, and upstream references are documented in [SOURCES.md](SOURCES.md).
 

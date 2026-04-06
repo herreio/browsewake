@@ -74,10 +74,15 @@ This document records the data sources browsewake currently parses, the meaning 
   - `deep_history[]` can include causally connected visits that are not currently visible in the browser's back/forward UI.
   - `deep_history[]` can be empty even when SNSS `history[]` exists, if the History DB does not have matching annotated visits.
   - Redirect/intermediate visits can appear because the History DB is visit-oriented.
+  - Browsewake does not use the History DB to invent additional `history[]` entries beyond what SNSS persists.
 - **References:**
+  - Chromium docs: [Session History](https://chromium.googlesource.com/chromium/src/+/main/docs/session_history.md)
+  - Chromium docs: [Modifying Session History Serialization](https://chromium.googlesource.com/chromium/src/+/main/docs/modifying_session_history_serialization.md)
+  - Chromium docs: [History Manipulation Intervention](https://chromium.googlesource.com/chromium/src/+/main/docs/history_manipulation_intervention.md)
   - Chromium source: [history_types.h](https://source.chromium.org/chromium/chromium/src/+/main:components/history/core/browser/history_types.h)
   - Chromium source: [visit_annotations_database.cc](https://source.chromium.org/chromium/chromium/src/+/main:components/history/core/browser/visit_annotations_database.cc)
   - Chromium source: [page_transition_types.h](https://source.chromium.org/chromium/chromium/src/+/main:ui/base/page_transition_types.h)
+  - Chromium source: [serialized_navigation_entry.cc](https://chromium.googlesource.com/chromium/chromium/+/HEAD/components/sessions/serialized_navigation_entry.cc)
 
 ## Safari
 
@@ -98,6 +103,7 @@ This document records the data sources browsewake currently parses, the meaning 
   - Apple Support: [Go back to pages you have already visited in Safari on Mac](https://support.apple.com/en-bw/guide/safari/ibrw1009/mac)
   - Apple Developer Docs: [WKBackForwardList currentItem](https://developer.apple.com/documentation/webkit/wkbackforwardlist/currentitem)
   - Apple Developer Docs: [WKWebView interactionState](https://developer.apple.com/documentation/webkit/wkwebview/interactionstate)
+  - Apple Developer Forums: [WKBackForwardList limitations for history export](https://developer.apple.com/forums/thread/71246)
   - Reverse-engineered reference: [mac_apt Safari parser](https://github.com/ydkhatri/mac_apt/blob/master/plugins/safari.py)
   - Reverse-engineered reference: [BrowserState.db analysis](https://doubleblak.com/browserstate)
   - Local scripting dictionary inspection: `sdef /Applications/Safari.app`
@@ -105,6 +111,7 @@ This document records the data sources browsewake currently parses, the meaning 
 ### Safari limitations
 
 - Safari's scripting interface exposes tab URL, title, and ordering, but not a back/forward list.
+- WebKit's `WKBackForwardList` is a runtime API for apps embedding `WKWebView`; it is not a stable automation surface for Safari itself.
 - Access to `~/Library/Safari` and `~/Library/Containers/com.apple.Safari/` is gated by macOS TCC (Transparency, Consent, and Control). The calling process needs Full Disk Access (FDA) in System Settings > Privacy & Security. Without FDA, `path.exists()` and `path.is_file()` can still return `true`, but `File::open()` and SQLite `Connection::open` will fail with "Operation not permitted". This means existence checks are not sufficient to determine readability.
 - Granting FDA to a compiled binary is fragile: each recompilation changes the binary's code signature, invalidating the grant. Granting FDA to the terminal app is more practical for development.
 - Any future Safari history parser should be treated as experimental until it is validated against real local Safari data.
