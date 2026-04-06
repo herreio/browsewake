@@ -130,20 +130,6 @@ pub fn brave_profile_dirs() -> Result<Vec<PathBuf>> {
     }
 }
 
-/// Returns the Safari data directory (macOS only).
-#[cfg(target_os = "macos")]
-pub fn safari_data_dir() -> Result<PathBuf> {
-    let path = dirs::home_dir()
-        .ok_or_else(|| BrowseWakeError::Other("cannot determine home directory".into()))?
-        .join("Library/Safari");
-
-    if path.is_dir() {
-        Ok(path)
-    } else {
-        Err(BrowseWakeError::NoProfile("safari".into()))
-    }
-}
-
 fn glob_subdirs(base: &std::path::Path) -> Result<Vec<PathBuf>> {
     let pattern = base.join("*").to_string_lossy().to_string();
     let mut dirs = Vec::new();

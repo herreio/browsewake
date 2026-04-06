@@ -57,7 +57,7 @@ This document records the data sources browsewake currently parses, the meaning 
 - **Tab nav payload layout (cmd 6):** tab_id (i32) + nav_index (i32) + url (4-byte length-prefixed UTF-8, padded to 4-byte boundary) + title (4-byte length-prefixed UTF-16LE, padded to 4-byte boundary).
 - **Confidence:** high for current restorable session state.
 - **References:**
-  - Chromium source: [session_service_commands.cc](https://source.chromium.org/chromium/chromium/src/+/main:components/sessions/core/session_service_commands.cc)
+  - Chromium source: [session_service_commands.cc](https://chromium.googlesource.com/chromium/src/%2B/49ba9b60/components/sessions/session_service_commands.cc)
   - Chromium source: [session_command.h](https://source.chromium.org/chromium/chromium/src/+/main:components/sessions/core/session_command.h)
 
 ### History SQLite DB (`--deep-history`)
@@ -83,14 +83,13 @@ This document records the data sources browsewake currently parses, the meaning 
 
 ### Current implementation
 
-- **Locations used:** `~/Library/Safari/CloudTabs.db`, `~/Library/Safari/BrowserState.db`
+- **Runtime source:** live JXA via `osascript -l JavaScript`
+- **Investigated but not used:** `~/Library/Safari/BrowserState.db`, `~/Library/Safari/CloudTabs.db`
 - **Known additional location:** `~/Library/Containers/com.apple.Safari/Data/Library/Safari/SafariTabs.db` (macOS Monterey+, sandboxed container). Not currently used by browsewake.
-- **Fallback:** live JXA via `osascript -l JavaScript`
 - **Role today:** current tabs only. Browsewake does not currently claim Safari per-tab back/forward history support.
 - **Current parser behavior:**
-  - `CloudTabs.db` is tried first for `url` / `title` pairs from the `cloud_tabs` table.
-  - `BrowserState.db` is used as a fallback for current tab URLs/titles via the `tabs` table.
-  - JXA is used when SQLite access fails, typically due to TCC/privacy restrictions.
+  - JXA is the only runtime source because it reflects the current local Safari windows and tab ordering.
+  - On-disk Safari SQLite files were investigated but are not currently trusted enough for production export.
 - **Confidence:** medium for current-tab export, low for anything beyond that.
 
 ### Investigation references

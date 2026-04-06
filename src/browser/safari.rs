@@ -1,10 +1,8 @@
 #![cfg(target_os = "macos")]
 
 use crate::browser::BrowserSource;
-use crate::browser::paths::safari_data_dir;
 use crate::error::{BrowseWakeError, Result};
 use crate::model::{BrowserKind, BrowserWindows, Tab, Window};
-use rusqlite::Connection;
 use std::process::Command;
 
 pub struct Safari;
@@ -15,112 +13,16 @@ impl BrowserSource for Safari {
     }
 
     fn available(&self) -> bool {
-        safari_data_dir().is_ok()
+        std::path::Path::new("/Applications/Safari.app").exists()
     }
 
     fn export_tabs(&self, _deep_history: bool) -> Result<BrowserWindows> {
-        match read_safari_tabs() {
-            Ok(windows) => Ok(BrowserWindows {
-                browser: BrowserKind::Safari,
-                windows,
-            }),
-            Err(_) => {
-                // Fallback to JXA if SQLite fails (e.g., TCC restrictions)
-                eprintln!("warning: SQLite access failed, trying JXA fallback");
-                let windows = read_safari_jxa()?;
-                Ok(BrowserWindows {
-                    browser: BrowserKind::Safari,
-                    windows,
-                })
-            }
-        }
+        let windows = read_safari_jxa()?;
+        Ok(BrowserWindows {
+            browser: BrowserKind::Safari,
+            windows,
+        })
     }
-}
-
-fn read_safari_tabs() -> Result<Vec<Window>> {
-    let safari_dir = safari_data_dir()?;
-
-    // Try CloudTabs.db first (has more reliable data)
-    let cloud_tabs_db = safari_dir.join("CloudTabs.db");
-    if cloud_tabs_db.exists()
-        && let Ok(tabs) = read_cloud_tabs_db(&cloud_tabs_db)
-        && !tabs.is_empty()
-    {
-        // CloudTabs doesn't have window info, put all in one window
-        return Ok(vec![Window { tabs }]);
-    }
-
-    // Try BrowserState.db
-    let state_db = safari_dir.join("BrowserState.db");
-    if state_db.exists() {
-        let tabs = read_browser_state_db(&state_db)?;
-        return Ok(vec![Window { tabs }]);
-    }
-
-    Err(BrowseWakeError::NoProfile(
-        "safari (no database found)".into(),
-    ))
-}
-
-fn read_cloud_tabs_db(path: &std::path::Path) -> Result<Vec<Tab>> {
-    let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
-    let mut stmt =
-        conn.prepare("SELECT url, title FROM cloud_tabs ORDER BY device_name, position")?;
-
-    let tabs = stmt
-        .query_map([], |row| {
-            Ok(Tab {
-                url: row.get(0)?,
-                title: row.get::<_, String>(1).unwrap_or_default(),
-                history: Vec::new(),
-                current_index: None,
-                deep_history: Vec::new(),
-                tab_id: None,
-            })
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    Ok(tabs)
-}
-
-fn read_browser_state_db(path: &std::path::Path) -> Result<Vec<Tab>> {
-    let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
-
-    // BrowserState.db schema varies across macOS versions; try known queries
-    let queries = [
-        "SELECT url, title FROM tabs",
-        "SELECT current_url, title FROM tabs",
-    ];
-
-    for query in &queries {
-        if let Ok(mut stmt) = conn.prepare(query) {
-            let tabs: Vec<Tab> = stmt
-                .query_map([], |row| {
-                    Ok(Tab {
-                        url: row.get(0)?,
-                        title: row.get::<_, String>(1).unwrap_or_default(),
-                        history: Vec::new(),
-                        current_index: None,
-                        deep_history: Vec::new(),
-                        tab_id: None,
-                    })
-                })
-                .ok()
-                .into_iter()
-                .flatten()
-                .filter_map(|r| r.ok())
-                .collect();
-
-            if !tabs.is_empty() {
-                return Ok(tabs);
-            }
-        }
-    }
-
-    Err(BrowseWakeError::Other(
-        "could not read Safari BrowserState.db".into(),
-    ))
 }
 
 fn read_safari_jxa() -> Result<Vec<Window>> {
