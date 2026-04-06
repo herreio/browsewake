@@ -57,7 +57,7 @@ This document records the data sources browsewake currently parses, the meaning 
 - **Tab nav payload layout (cmd 6):** tab_id (i32) + nav_index (i32) + url (4-byte length-prefixed UTF-8, padded to 4-byte boundary) + title (4-byte length-prefixed UTF-16LE, padded to 4-byte boundary).
 - **Confidence:** high for current restorable session state.
 - **References:**
-  - Chromium source: [session_service_commands.cc](https://chromium.googlesource.com/chromium/src/%2B/49ba9b60/components/sessions/session_service_commands.cc)
+  - Chromium source: [session_service_commands.cc](https://source.chromium.org/chromium/chromium/src/+/main:components/sessions/core/session_service_commands.cc)
   - Chromium source: [session_command.h](https://source.chromium.org/chromium/chromium/src/+/main:components/sessions/core/session_command.h)
 
 ### History SQLite DB (`--deep-history`)
@@ -76,13 +76,13 @@ This document records the data sources browsewake currently parses, the meaning 
   - Redirect/intermediate visits can appear because the History DB is visit-oriented.
   - Browsewake does not use the History DB to invent additional `history[]` entries beyond what SNSS persists.
 - **References:**
-  - Chromium docs: [Session History](https://chromium.googlesource.com/chromium/src/+/main/docs/session_history.md)
-  - Chromium docs: [Modifying Session History Serialization](https://chromium.googlesource.com/chromium/src/+/main/docs/modifying_session_history_serialization.md)
-  - Chromium docs: [History Manipulation Intervention](https://chromium.googlesource.com/chromium/src/+/main/docs/history_manipulation_intervention.md)
+  - Chromium docs: [Session History](https://source.chromium.org/chromium/chromium/src/+/main:docs/session_history.md)
+  - Chromium docs: [Modifying Session History Serialization](https://source.chromium.org/chromium/chromium/src/+/main:docs/modifying_session_history_serialization.md)
+  - Chromium docs: [History Manipulation Intervention](https://source.chromium.org/chromium/chromium/src/+/main:docs/history_manipulation_intervention.md)
   - Chromium source: [history_types.h](https://source.chromium.org/chromium/chromium/src/+/main:components/history/core/browser/history_types.h)
   - Chromium source: [visit_annotations_database.cc](https://source.chromium.org/chromium/chromium/src/+/main:components/history/core/browser/visit_annotations_database.cc)
   - Chromium source: [page_transition_types.h](https://source.chromium.org/chromium/chromium/src/+/main:ui/base/page_transition_types.h)
-  - Chromium source: [serialized_navigation_entry.cc](https://chromium.googlesource.com/chromium/chromium/+/HEAD/components/sessions/serialized_navigation_entry.cc)
+  - Chromium source: [serialized_navigation_entry.cc](https://source.chromium.org/chromium/chromium/src/+/main:components/sessions/core/serialized_navigation_entry.cc)
 
 ## Safari
 
