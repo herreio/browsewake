@@ -19,6 +19,7 @@ Browser extensions can export active tabs but not their back/forward history. Br
 **Deep history** (`--deep-history`): Chromium browsers record visits in a SQLite database with per-tab attribution. Browsewake anchors those visits to the current SNSS session history and reconstructs a causally connected visit tree for each tab. This is supplemental visit history, not an exact dump of the browser's visible back/forward list, and it is not used to extend `history[]`.
 
 Safari remains current-tabs-only. Browsewake does not currently expose Safari per-tab back/forward history because no stable standalone CLI surface has been validated for it.
+Safari export requires a normal macOS user session with Apple Events permission to control Safari.
 
 Parser details, output semantics, and upstream references are documented in [SOURCES.md](SOURCES.md).
 
@@ -68,7 +69,7 @@ Export a specific browser:
 browsewake firefox
 ```
 
-When a browser is explicitly requested but unsupported on the current platform or not installed, browsewake exits with an error instead of silently returning an empty export.
+When a browser is explicitly requested, browsewake exits with an error if that browser is unsupported, unavailable, or fails during export.
 
 ### Options
 
